@@ -14,7 +14,7 @@
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
 body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#F7F9FB;min-height:100vh;}
-input,textarea,button{font-family:inherit;}
+input,textarea,button,select{font-family:inherit;}
 button:active{opacity:.85;}
 ::-webkit-scrollbar{width:4px;}
 ::-webkit-scrollbar-thumb{background:#C0D8DE;border-radius:4px;}
@@ -43,183 +43,151 @@ const RAG = {
   red:  { bg:C.redL,   text:C.red,   border:C.red,   dot:C.red,   label:"Urgent" },
 };
 
-// ── SUPABASE DATA LAYER ────────────────────────────────────────────────────
+// ── DATABASE LAYER ─────────────────────────────────────────────────────────
 const db = {
-  async login(email, password) {
-    const { data, error } = await SUPA.from("users").select("*").eq("email", email).eq("password", password).single();
-    return { data, error };
+  async login(email,password) {
+    const {data,error} = await SUPA.from("users").select("*").eq("email",email).eq("password",password).single();
+    return {data,error};
   },
-  async getProperties(propIds) {
+  async getProperties(ids) {
     let q = SUPA.from("properties").select("*");
-    if (propIds && propIds.length) q = q.in("id", propIds);
-    const { data } = await q;
-    return data || [];
+    if(ids&&ids.length) q=q.in("id",ids);
+    const {data}=await q; return data||[];
   },
   async getAreas(propId) {
-    const { data } = await SUPA.from("areas").select("*").eq("prop_id", propId).order("sort_order");
-    return data || [];
+    const {data}=await SUPA.from("areas").select("*").eq("prop_id",propId).order("sort_order");
+    return data||[];
   },
-  async getRooms(propId, areaId) {
-    const { data } = await SUPA.from("rooms").select("*").eq("prop_id", propId).eq("area_id", areaId);
-    return data || [];
+  async getRooms(propId,areaId) {
+    const {data}=await SUPA.from("rooms").select("*").eq("prop_id",propId).eq("area_id",areaId);
+    return data||[];
   },
-  async getFindings(filters = {}) {
-    let q = SUPA.from("findings").select("*");
-    if (filters.propId)  q = q.eq("prop_id", filters.propId);
-    if (filters.areaId)  q = q.eq("area_id", filters.areaId);
-    if (filters.roomId)  q = q.eq("room_id", filters.roomId);
-    if (filters.propIds) q = q.in("prop_id", filters.propIds);
-    const { data } = await q;
-    return data || [];
+  async getUsers() {
+    const {data}=await SUPA.from("users").select("*"); return data||[];
   },
-  async updateFinding(id, updates) {
-    await SUPA.from("findings").update(updates).eq("id", id);
+
+  // Tasks — linked to prop+area+room
+  async getTasksForArea(propId,areaId) {
+    const {data}=await SUPA.from("tasks").select("*")
+      .eq("prop_id",propId).eq("area_id",areaId).is("room_id",null).eq("active",true);
+    return data||[];
   },
-  async getVisits(propId) {
-    const { data } = await SUPA.from("visits").select("*").eq("prop_id", propId).order("date", { ascending: false });
-    return data || [];
+  async getAllTasks(propId) {
+    const {data}=await SUPA.from("tasks").select("*").eq("prop_id",propId).eq("active",true);
+    return data||[];
   },
-  async getTasksForRoom(propId, areaId, roomId) {
-    const { data } = await SUPA.from("room_tasks")
-      .select("*, tasks(*)")
-      .eq("prop_id", propId).eq("area_id", areaId).eq("room_id", roomId).eq("active", true);
-    return (data||[]).map(rt=>rt.tasks).filter(Boolean);
+
+  // Schedule
+  async getSchedule(filters={}) {
+    let q=SUPA.from("schedule").select("*, tasks(ref,name,est_minutes,bom,type,charge_rate,grade,photo_req,description), areas(name,icon), rooms(name,sub_name)").order("due_date");
+    if(filters.propId)  q=q.eq("prop_id",filters.propId);
+    if(filters.techId)  q=q.eq("tech_id",filters.techId);
+    if(filters.areaId)  q=q.eq("area_id",filters.areaId);
+    if(filters.month)   q=q.eq("month_label",filters.month);
+    if(filters.status)  q=q.eq("status",filters.status);
+    const {data}=await q; return data||[];
   },
-  async getTasksForArea(propId, areaId) {
-    const { data } = await SUPA.from("area_tasks")
-      .select("*, tasks(*)")
-      .eq("prop_id", propId).eq("area_id", areaId).eq("active", true);
-    return (data||[]).map(at=>at.tasks).filter(Boolean);
+  async getScheduleMonths(propId) {
+    const {data}=await SUPA.from("schedule").select("month_label").eq("prop_id",propId);
+    const unique=[...new Set((data||[]).map(d=>d.month_label))];
+    return unique;
   },
-  async getTasks() {
-    const { data } = await SUPA.from("tasks").select("*").eq("active", true);
-    return data || [];
+  async assignTech(scheduleId,techId) {
+    await SUPA.from("schedule").update({tech_id:techId}).eq("id",scheduleId);
   },
-  async addRoom(propId, areaId, name, subName) {
-    const roomId = "r" + Date.now();
-    await SUPA.from("rooms").insert({ id:roomId, prop_id:propId, area_id:areaId, name, sub_name:subName, rag:"green" });
-    // Auto-assign all standard room tasks
-    const { data: tasks } = await SUPA.from("tasks").select("id").eq("active", true);
-    if(tasks) {
-      const assignments = tasks.map(t=>({ task_id:t.id, prop_id:propId, area_id:areaId, room_id:roomId }));
-      await SUPA.from("room_tasks").insert(assignments);
-    }
-    return roomId;
+
+  // Events — created when tech completes a task
+  async getEvents(filters={}) {
+    let q=SUPA.from("events").select("*, tasks(ref,name,type,charge_rate), areas(name,icon), rooms(name)").order("completed_at",{ascending:false});
+    if(filters.propId)  q=q.eq("prop_id",filters.propId);
+    if(filters.areaId)  q=q.eq("area_id",filters.areaId);
+    if(filters.roomId)  q=q.eq("room_id",filters.roomId);
+    if(filters.propIds) q=q.in("prop_id",filters.propIds);
+    if(filters.month)   q=q.eq("month_label",filters.month);
+    if(filters.rag)     q=q.eq("rag",filters.rag);
+    const {data}=await q; return data||[];
   },
-  async addProperty(name, address, type, ownerId) {
-    const id = "p" + Date.now();
-    await SUPA.from("properties").insert({ id, name, address, type, owner_id:ownerId, rag:"green", room_count:0 });
+  async createEvent(eventData) {
+    const {error}=await SUPA.from("events").insert({
+      id: "ev"+Date.now()+Math.floor(Math.random()*1000),
+      ...eventData
+    });
+    if(error) throw error;
+  },
+  async updateEvent(id,updates) {
+    await SUPA.from("events").update(updates).eq("id",id);
+  },
+  async completeScheduleEntry(id) {
+    await SUPA.from("schedule").update({status:"complete"}).eq("id",id);
+  },
+
+  // Photo upload
+  async uploadPhoto(file,path) {
+    const {error}=await SUPA.storage.from("visit-photos").upload(path,file,{upsert:true});
+    if(error){console.error(error);return null;}
+    const {data}=SUPA.storage.from("visit-photos").getPublicUrl(path);
+    return data.publicUrl;
+  },
+
+  // Admin — add records
+  async addProperty(name,address,type) {
+    const id="p"+Date.now();
+    await SUPA.from("properties").insert({id,name,address,type,rag:"green",room_count:0});
     return id;
   },
-  async addArea(propId, name, icon, hasRooms) {
-    const id = "a" + Date.now();
-    const count = await SUPA.from("areas").select("sort_order", {count:"exact"}).eq("prop_id", propId);
-    await SUPA.from("areas").insert({ id, prop_id:propId, name, icon:icon||"📋", has_rooms:hasRooms, rag:"green", sort_order:10 });
+  async addArea(propId,name,icon,hasRooms) {
+    const id="a"+Date.now();
+    await SUPA.from("areas").insert({id,prop_id:propId,name,icon:icon||"📋",has_rooms:hasRooms,rag:"green",sort_order:99});
     return id;
   },
-  async addUser(name, role, email, password, propIds) {
-    const id = "u" + Date.now();
-    const { error } = await SUPA.from("users").insert({ id, name, role, email, password, prop_ids:propIds||[] });
+  async addRoom(propId,areaId,name,subName) {
+    const id="r"+Date.now();
+    await SUPA.from("rooms").insert({id,prop_id:propId,area_id:areaId,name,sub_name:subName,rag:"green"});
+    return id;
+  },
+  async addUser(name,role,email,password) {
+    const id="u"+Date.now();
+    const {error}=await SUPA.from("users").insert({id,name,role,email,password,prop_ids:[]});
     if(error) throw error;
     return id;
   },
-  async addTask(ref, name, description, type, frequency, grade, photoRequired, appliesTo) {
-    const id = "t" + Date.now();
-    const { error } = await SUPA.from("tasks").insert({
-      id, ref, name, description, type, frequency, grade,
-      photo_required: photoRequired, applies_to: appliesTo, active: true
-    });
+  async addTask(data) {
+    const id="tk"+Date.now();
+    const {error}=await SUPA.from("tasks").insert({id,...data,active:true});
     if(error) throw error;
-    // Auto-assign to all existing rooms if it applies to rooms
-    if(appliesTo === "room" || appliesTo === "both") {
-      const { data: rooms } = await SUPA.from("rooms").select("id, prop_id, area_id");
-      if(rooms && rooms.length) {
-        const assignments = rooms.map(r=>({ task_id:id, prop_id:r.prop_id, area_id:r.area_id, room_id:r.id }));
-        await SUPA.from("room_tasks").insert(assignments);
-      }
-    }
     return id;
-  },
-  async toggleTask(id, active) { await SUPA.from("tasks").update({active}).eq("id", id); },
-  async updateProperty(id, updates) { await SUPA.from("properties").update(updates).eq("id", id); },
-  async updateArea(id, updates)     { await SUPA.from("areas").update(updates).eq("id", id); },
-  async updateRoom(id, updates)     { await SUPA.from("rooms").update(updates).eq("id", id); },
-  async updateUser(id, updates)     { await SUPA.from("users").update(updates).eq("id", id); },
-  async getUsers()                  { const { data } = await SUPA.from("users").select("*"); return data||[]; },
-  async getSchedule(techId) {
-    let q = SUPA.from("schedule").select("*").order("date");
-    if (techId) q = q.eq("tech_id", techId);
-    const { data } = await q;
-    return data || [];
-  },
-  async uploadPhoto(file, path) {
-    const { data, error } = await SUPA.storage
-      .from("visit-photos")
-      .upload(path, file, { upsert: true });
-    if (error) { console.error("Upload error:", error); return null; }
-    const { data: urlData } = SUPA.storage.from("visit-photos").getPublicUrl(path);
-    return urlData.publicUrl;
-  },
-  async submitVisit(visitData, taskResults) {
-    const green = taskResults.filter(t => t.rag === "green").length;
-    const amber = taskResults.filter(t => t.rag === "amber").length;
-    const red   = taskResults.filter(t => t.rag === "red").length;
-    await SUPA.from("visits").insert({
-      id: "v" + Date.now(),
-      prop_id: visitData.propId,
-      date: new Date().toLocaleDateString("en-GB", {day:"2-digit",month:"short",year:"numeric"}),
-      tech_name: visitData.techName,
-      tech_id: visitData.techId,
-      status: "complete",
-      task_count: taskResults.length,
-      green_count: green,
-      amber_count: amber,
-      red_count: red,
-    });
-    for (const t of taskResults.filter(r => r.rag !== "green")) {
-      await SUPA.from("findings").insert({
-        id: "f" + Date.now() + Math.random(),
-        prop_id: visitData.propId,
-        area_id: visitData.areaId,
-        room_id: visitData.roomId || null,
-        ref: t.ref,
-        type: t.type,
-        rag: t.rag,
-        title: t.note || t.name,
-        date: new Date().toLocaleDateString("en-GB", {day:"2-digit",month:"short",year:"numeric"}),
-        status: "pending",
-        notes: t.note || "",
-        photo_url: t.photoUrl || null,
-      });
-    }
-    await SUPA.from("schedule").update({ status: "complete" }).eq("id", visitData.schedId);
   },
 };
 
 // ── SHARED UI ──────────────────────────────────────────────────────────────
-const RagDot = ({rag,size=10}) => <span style={{display:"inline-block",width:size,height:size,borderRadius:"50%",background:RAG[rag]?.dot||C.mid,flexShrink:0}}/>;
-const RagBadge = ({rag}) => rag && RAG[rag] ? (
+const RagDot=({rag,size=10})=><span style={{display:"inline-block",width:size,height:size,borderRadius:"50%",background:RAG[rag]?.dot||C.mid,flexShrink:0}}/>;
+
+const RagBadge=({rag})=>rag&&RAG[rag]?(
   <span style={{display:"inline-flex",alignItems:"center",gap:5,padding:"3px 10px",borderRadius:20,background:RAG[rag].bg,color:RAG[rag].text,fontSize:11,fontWeight:600,border:"1px solid "+RAG[rag].border,whiteSpace:"nowrap"}}>
     <RagDot rag={rag} size={7}/>{RAG[rag].label}
   </span>
-) : null;
+):null;
 
-const StatusBadge = ({status}) => {
-  const m={pending:{bg:"#F1F5F9",c:"#64748B",l:"Pending"},acknowledged:{bg:C.greenL,c:C.green,l:"Noted"},pending_quote:{bg:C.amberL,c:C.amber,l:"Quote requested"},in_progress:{bg:C.tealL,c:C.teal,l:"In progress"},complete:{bg:C.greenL,c:C.green,l:"Complete"},scheduled:{bg:C.tealL,c:C.teal,l:"Scheduled"},cancelled:{bg:"#F1F5F9",c:C.mid,l:"Cancelled"}};
+const StatusBadge=({status})=>{
+  const m={pending:{bg:"#F1F5F9",c:"#64748B",l:"Pending"},acknowledged:{bg:C.greenL,c:C.green,l:"Noted"},
+    none:{bg:"#F1F5F9",c:C.mid,l:"No action"},requested:{bg:C.amberL,c:C.amber,l:"Quote requested"},
+    sent:{bg:C.tealL,c:C.teal,l:"Quote sent"},approved:{bg:C.greenL,c:C.green,l:"Approved"},
+    rejected:{bg:C.redL,c:C.red,l:"Rejected"},complete:{bg:C.greenL,c:C.green,l:"Complete"},
+    scheduled:{bg:C.tealL,c:C.teal,l:"Scheduled"},skipped:{bg:"#F1F5F9",c:C.mid,l:"Skipped"}};
   const s=m[status]||m.pending;
   return <span style={{padding:"2px 9px",borderRadius:20,background:s.bg,color:s.c,fontSize:11,fontWeight:600}}>{s.l}</span>;
 };
 
-const TypeBadge = ({type}) => {
-  const m={elec:"Electrical",hydro:"Water / Legionella",hvac:"HVAC",misc:"General"};
+const TypeBadge=({type})=>{
+  const m={elec:"Electrical",hydro:"Water/Legionella",hvac:"HVAC",misc:"General",fire:"Fire",pest:"Pest",pool:"Pool"};
   return <span style={{padding:"2px 8px",borderRadius:4,background:"#EFF3F8",color:C.slate,fontSize:11}}>{m[type]||type}</span>;
 };
 
-const Card = ({children,style={},onClick}) => (
+const Card=({children,style={},onClick})=>(
   <div onClick={onClick} style={{background:C.white,border:"1px solid "+C.line,borderRadius:10,padding:16,cursor:onClick?"pointer":"default",...style}}>{children}</div>
 );
 
-const SectionHead = ({title,sub,action,back}) => (
+const SectionHead=({title,sub,action,back})=>(
   <div style={{marginBottom:20}}>
     {back&&<button onClick={back} style={{background:"none",border:"none",color:C.teal,fontSize:13,cursor:"pointer",padding:"0 0 8px 0",display:"block"}}>← Back</button>}
     <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between"}}>
@@ -230,25 +198,43 @@ const SectionHead = ({title,sub,action,back}) => (
   </div>
 );
 
-const Btn = ({children,onClick,variant="primary",small=false,full=false,disabled=false}) => {
-  const s={primary:{background:C.teal,color:C.white,border:"none"},secondary:{background:C.white,color:C.teal,border:"1.5px solid "+C.teal},ghost:{background:"transparent",color:C.mid,border:"1px solid "+C.line},danger:{background:C.red,color:C.white,border:"none"}};
+const Btn=({children,onClick,variant="primary",small=false,full=false,disabled=false})=>{
+  const s={primary:{background:C.teal,color:C.white,border:"none"},
+    secondary:{background:C.white,color:C.teal,border:"1.5px solid "+C.teal},
+    ghost:{background:"transparent",color:C.mid,border:"1px solid "+C.line},
+    danger:{background:C.red,color:C.white,border:"none"},
+    amber:{background:C.amberL,color:C.amber,border:"1px solid "+C.amber}};
   return <button onClick={onClick} disabled={disabled} style={{...s[variant],padding:small?"5px 12px":"8px 18px",borderRadius:7,fontSize:small?12:13,fontWeight:600,cursor:disabled?"not-allowed":"pointer",opacity:disabled?.5:1,display:"inline-flex",alignItems:"center",gap:6,width:full?"100%":"auto",justifyContent:full?"center":"flex-start"}}>{children}</button>;
 };
 
-const StatBox = ({label,value,rag,loading}) => (
+const StatBox=({label,value,rag,loading})=>(
   <div style={{textAlign:"center",padding:"12px 0"}}>
     <div style={{fontSize:28,fontWeight:700,color:rag?RAG[rag].text:C.teal}}>{loading?"…":value}</div>
     <div style={{fontSize:11,color:C.mid,marginTop:3}}>{label}</div>
   </div>
 );
 
-const Grid = ({cols=2,children,gap=10}) => (
+const Grid=({cols=2,children,gap=10})=>(
   <div style={{display:"grid",gridTemplateColumns:"repeat("+cols+",1fr)",gap}}>{children}</div>
 );
 
-const Spinner = () => (
-  <div style={{textAlign:"center",padding:40,color:C.mid,fontSize:14}}>Loading…</div>
-);
+const Spinner=()=><div style={{textAlign:"center",padding:40,color:C.mid,fontSize:14}}>Loading…</div>;
+
+const Inp=({label,value,onChange,placeholder,type="text",rows})=>(<div style={{marginBottom:12}}>
+  {label&&<label style={{fontSize:11,fontWeight:600,color:C.slate,display:"block",marginBottom:4}}>{label}</label>}
+  {rows?<textarea value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} rows={rows}
+    style={{width:"100%",padding:"8px 12px",borderRadius:7,border:"1px solid "+C.line,fontSize:13,outline:"none",resize:"vertical",fontFamily:"inherit"}}/>
+  :<input value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} type={type}
+    style={{width:"100%",padding:"8px 12px",borderRadius:7,border:"1px solid "+C.line,fontSize:13,outline:"none"}}/>}
+</div>);
+
+const Sel=({label,value,onChange,options})=>(<div style={{marginBottom:12}}>
+  {label&&<label style={{fontSize:11,fontWeight:600,color:C.slate,display:"block",marginBottom:4}}>{label}</label>}
+  <select value={value} onChange={e=>onChange(e.target.value)}
+    style={{width:"100%",padding:"8px 12px",borderRadius:7,border:"1px solid "+C.line,fontSize:13,outline:"none",background:"white"}}>
+    {options.map(o=><option key={o.v} value={o.v}>{o.l}</option>)}
+  </select>
+</div>);
 
 // ── LOGIN ──────────────────────────────────────────────────────────────────
 function Login({onLogin}) {
@@ -257,12 +243,11 @@ function Login({onLogin}) {
   const [err,setErr]=useState("");
   const [loading,setLoading]=useState(false);
 
-  const attempt = async () => {
-    if(!email||!pass){setErr("Please enter your email and password.");return;}
-    setErr(""); setLoading(true);
-    const {data,error} = await db.login(email,pass);
-    if(data) onLogin(data);
-    else { setErr("Incorrect email or password."); setLoading(false); }
+  const attempt=async()=>{
+    if(!email||!pass){setErr("Please enter email and password.");return;}
+    setErr("");setLoading(true);
+    const {data,error}=await db.login(email,pass);
+    if(data) onLogin(data); else {setErr("Incorrect email or password.");setLoading(false);}
   };
 
   return (
@@ -272,22 +257,11 @@ function Login({onLogin}) {
           <div style={{fontSize:26,fontWeight:800,color:C.teal,letterSpacing:-1}}>PMS Malta</div>
           <div style={{fontSize:12,color:C.mid,marginTop:4}}>Preventive Maintenance Services</div>
         </div>
-        <div style={{marginBottom:14}}>
-          <label style={{fontSize:12,fontWeight:600,color:C.slate,display:"block",marginBottom:6}}>Email</label>
-          <input value={email} onChange={e=>setEmail(e.target.value)} type="email" placeholder="you@example.com"
-            style={{width:"100%",padding:"10px 14px",borderRadius:8,border:"1.5px solid "+C.line,fontSize:14,outline:"none"}}/>
-        </div>
-        <div style={{marginBottom:18}}>
-          <label style={{fontSize:12,fontWeight:600,color:C.slate,display:"block",marginBottom:6}}>Password</label>
-          <input value={pass} onChange={e=>setPass(e.target.value)} type="password" placeholder="••••••••"
-            onKeyDown={e=>e.key==="Enter"&&attempt()}
-            style={{width:"100%",padding:"10px 14px",borderRadius:8,border:"1.5px solid "+C.line,fontSize:14,outline:"none"}}/>
-        </div>
+        <Inp label="Email" value={email} onChange={setEmail} placeholder="you@example.com" type="email"/>
+        <Inp label="Password" value={pass} onChange={setPass} placeholder="••••••••" type="password"/>
         {err&&<div style={{marginBottom:12,padding:"8px 12px",background:C.redL,color:C.red,borderRadius:6,fontSize:13}}>{err}</div>}
         <Btn onClick={attempt} full disabled={loading}>{loading?"Signing in…":"Sign in"}</Btn>
-        <div style={{marginTop:20,fontSize:11,color:C.mid,textAlign:"center"}}>
-          Contact your administrator if you need access.
-        </div>
+        <div style={{marginTop:20,fontSize:11,color:C.mid,textAlign:"center"}}>Contact your administrator if you need access.</div>
       </div>
     </div>
   );
@@ -296,27 +270,29 @@ function Login({onLogin}) {
 // ── ADMIN DASHBOARD ────────────────────────────────────────────────────────
 function AdminDash({setView}) {
   const [props,setProps]=useState([]);
-  const [findings,setFindings]=useState([]);
+  const [events,setEvents]=useState([]);
+  const [schedule,setSchedule]=useState([]);
   const [loading,setLoading]=useState(true);
 
   useEffect(()=>{
-    Promise.all([db.getProperties(), db.getFindings()]).then(([p,f])=>{
-      setProps(p); setFindings(f); setLoading(false);
+    Promise.all([db.getProperties(),db.getEvents(),db.getSchedule({status:"scheduled"})]).then(([p,e,s])=>{
+      setProps(p);setEvents(e);setSchedule(s);setLoading(false);
     });
   },[]);
 
-  const reds=findings.filter(f=>f.rag==="red").length;
-  const ambers=findings.filter(f=>f.rag==="amber").length;
-
   if(loading) return <Spinner/>;
+  const reds=events.filter(e=>e.rag==="red").length;
+  const ambers=events.filter(e=>e.rag==="amber").length;
+  const upcoming=schedule.slice(0,5);
+
   return (
     <div>
       <SectionHead title="Dashboard" sub="All properties · current status"/>
       <Grid cols={4} gap={10}>
         <Card><StatBox label="Properties" value={props.length}/></Card>
-        <Card><StatBox label="Findings" value={findings.length}/></Card>
+        <Card><StatBox label="Events this month" value={events.length}/></Card>
         <Card><StatBox label="Urgent" value={reds} rag="red"/></Card>
-        <Card><StatBox label="Amber" value={ambers} rag="amber"/></Card>
+        <Card><StatBox label="Attention" value={ambers} rag="amber"/></Card>
       </Grid>
       <div style={{height:14}}/>
       {props.map(p=>(
@@ -329,32 +305,33 @@ function AdminDash({setView}) {
         </Card>
       ))}
       <Card style={{marginTop:4}}>
-        <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>Urgent findings</div>
-        {findings.filter(f=>f.rag==="red").map(f=>(
-          <div key={f.id} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 0",borderBottom:"1px solid "+C.line,flexWrap:"wrap"}}>
-            <RagBadge rag={f.rag}/><TypeBadge type={f.type}/>
-            <span style={{flex:1,fontSize:13}}>{f.title}</span>
-            <StatusBadge status={f.status}/>
+        <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>Upcoming scheduled visits</div>
+        {upcoming.length?upcoming.map(s=>(
+          <div key={s.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:"1px solid "+C.line,flexWrap:"wrap"}}>
+            <div style={{minWidth:90,fontSize:12,fontWeight:600,color:C.teal}}>{s.due_date}</div>
+            <div style={{flex:1}}>
+              <div style={{fontSize:13,fontWeight:600}}>{s.tasks?.name}</div>
+              <div style={{fontSize:11,color:C.mid}}>{s.areas?.icon} {s.areas?.name} {s.rooms?"· "+s.rooms.name:""}</div>
+            </div>
+            <TypeBadge type={s.tasks?.type}/>
           </div>
-        ))}
-        {findings.filter(f=>f.rag==="red").length===0&&<div style={{fontSize:13,color:C.mid}}>No urgent findings.</div>}
+        )):<div style={{fontSize:13,color:C.mid}}>No upcoming visits.</div>}
       </Card>
     </div>
   );
 }
 
+// ── ADMIN PROPERTY ─────────────────────────────────────────────────────────
 function AdminProp({propId,setView}) {
   const [prop,setProp]=useState(null);
   const [areas,setAreas]=useState([]);
-  const [findings,setFindings]=useState([]);
+  const [events,setEvents]=useState([]);
   const [loading,setLoading]=useState(true);
 
   useEffect(()=>{
-    Promise.all([
-      db.getProperties([propId]),
-      db.getAreas(propId),
-      db.getFindings({propId}),
-    ]).then(([ps,a,f])=>{ setProp(ps[0]); setAreas(a); setFindings(f); setLoading(false); });
+    Promise.all([db.getProperties([propId]),db.getAreas(propId),db.getEvents({propId})]).then(([ps,a,e])=>{
+      setProp(ps[0]);setAreas(a);setEvents(e);setLoading(false);
+    });
   },[propId]);
 
   if(loading) return <Spinner/>;
@@ -363,10 +340,10 @@ function AdminProp({propId,setView}) {
     <div>
       <SectionHead title={prop.name} sub={prop.address} action={<RagBadge rag={prop.rag}/>} back={()=>setView({page:"a_dash"})}/>
       <Grid cols={4} gap={10}>
-        <Card><StatBox label="Findings" value={findings.length}/></Card>
-        <Card><StatBox label="Urgent" value={findings.filter(f=>f.rag==="red").length} rag="red"/></Card>
-        <Card><StatBox label="Amber" value={findings.filter(f=>f.rag==="amber").length} rag="amber"/></Card>
-        <Card><StatBox label="Areas" value={areas.length}/></Card>
+        <Card><StatBox label="Total events" value={events.length}/></Card>
+        <Card><StatBox label="Urgent" value={events.filter(e=>e.rag==="red").length} rag="red"/></Card>
+        <Card><StatBox label="Attention" value={events.filter(e=>e.rag==="amber").length} rag="amber"/></Card>
+        <Card><StatBox label="Complete" value={events.filter(e=>e.rag==="green").length} rag="green"/></Card>
       </Grid>
       <div style={{fontWeight:700,fontSize:14,margin:"16px 0 10px"}}>Areas</div>
       <Grid cols={2} gap={10}>
@@ -376,7 +353,9 @@ function AdminProp({propId,setView}) {
               <span style={{fontSize:22}}>{a.icon}</span><RagBadge rag={a.rag}/>
             </div>
             <div style={{fontWeight:600,fontSize:14,marginTop:8}}>{a.name}</div>
-            <div style={{fontSize:11,color:C.mid,marginTop:4}}>{findings.filter(f=>f.area_id===a.id).length} findings</div>
+            <div style={{fontSize:11,color:C.mid,marginTop:4}}>
+              {events.filter(e=>e.area_id===a.id).length} events logged
+            </div>
           </Card>
         ))}
       </Grid>
@@ -384,24 +363,20 @@ function AdminProp({propId,setView}) {
   );
 }
 
+// ── ADMIN AREA ─────────────────────────────────────────────────────────────
 function AdminArea({propId,areaId,setView}) {
   const [prop,setProp]=useState(null);
   const [area,setArea]=useState(null);
   const [rooms,setRooms]=useState([]);
-  const [findings,setFindings]=useState([]);
-  const [visits,setVisits]=useState([]);
+  const [events,setEvents]=useState([]);
+  const [tasks,setTasks]=useState([]);
   const [loading,setLoading]=useState(true);
 
   useEffect(()=>{
-    Promise.all([
-      db.getProperties([propId]),
-      db.getAreas(propId),
-      db.getRooms(propId,areaId),
-      db.getFindings({propId,areaId}),
-      db.getVisits(propId),
-    ]).then(([ps,areas,r,f,v])=>{
-      setProp(ps[0]); setArea(areas.find(a=>a.id===areaId));
-      setRooms(r); setFindings(f); setVisits(v); setLoading(false);
+    Promise.all([db.getProperties([propId]),db.getAreas(propId),db.getRooms(propId,areaId),
+      db.getEvents({propId,areaId}),db.getTasksForArea(propId,areaId)]).then(([ps,areas,r,e,t])=>{
+      setProp(ps[0]);setArea(areas.find(a=>a.id===areaId));
+      setRooms(r);setEvents(e);setTasks(t);setLoading(false);
     });
   },[propId,areaId]);
 
@@ -415,62 +390,66 @@ function AdminArea({propId,areaId,setView}) {
         <Grid cols={3} gap={8}>
           {rooms.map(r=>(
             <Card key={r.id} onClick={()=>setView({page:"a_room",propId,areaId,roomId:r.id})} style={{padding:12}}>
-              <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{fontWeight:700,fontSize:13}}>{r.name}</span><RagDot rag={r.rag} size={10}/></div>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+                <span style={{fontWeight:700,fontSize:13}}>{r.name}</span><RagDot rag={r.rag} size={10}/>
+              </div>
               <div style={{fontSize:11,color:C.mid}}>{r.sub_name}</div>
             </Card>
           ))}
         </Grid><div style={{height:16}}/></>
       )}
-      <Grid cols={1} gap={12}>
-        <Card>
-          <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>Findings</div>
-          {findings.length?findings.map(f=>(
-            <div key={f.id} style={{padding:"9px 0",borderBottom:"1px solid "+C.line}}>
-              <div style={{display:"flex",gap:8,marginBottom:4}}><RagBadge rag={f.rag}/><TypeBadge type={f.type}/></div>
-              <div style={{fontSize:13,marginBottom:4}}>{f.title}</div>
-              <StatusBadge status={f.status}/>
+      <div style={{fontWeight:700,fontSize:14,marginBottom:10}}>Assigned tasks ({tasks.length})</div>
+      {tasks.map(t=>(
+        <div key={t.id} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 0",borderBottom:"1px solid "+C.line,flexWrap:"wrap"}}>
+          <span style={{fontSize:11,fontWeight:700,color:C.teal,minWidth:48}}>{t.ref}</span>
+          <span style={{flex:1,fontSize:13}}>{t.name}</span>
+          <TypeBadge type={t.type}/>
+          <span style={{fontSize:11,color:C.mid}}>{t.frequency}</span>
+          {t.charge_rate>0&&<span style={{fontSize:11,fontWeight:600,color:C.green}}>€{t.charge_rate}</span>}
+          <span style={{fontSize:11,color:C.mid}}>{t.est_minutes}min</span>
+        </div>
+      ))}
+      <div style={{height:16}}/>
+      <Card>
+        <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>Events — audit trail</div>
+        {events.length?events.map(e=>(
+          <div key={e.id} style={{padding:"9px 0",borderBottom:"1px solid "+C.line}}>
+            <div style={{display:"flex",gap:8,marginBottom:4,alignItems:"center",flexWrap:"wrap"}}>
+              <RagBadge rag={e.rag}/><TypeBadge type={e.tasks?.type}/>
+              <span style={{fontSize:11,fontWeight:700,color:C.teal}}>{e.tasks?.ref}</span>
+              <span style={{marginLeft:"auto",fontSize:11,color:C.mid}}>{e.completed_at?.slice(0,10)}</span>
             </div>
-          )):<div style={{fontSize:13,color:C.mid}}>No findings.</div>}
-        </Card>
-        <Card>
-          <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>Audit trail</div>
-          {visits.map(v=>(
-            <div key={v.id} style={{padding:"9px 0",borderBottom:"1px solid "+C.line}}>
-              <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{fontSize:13,fontWeight:600}}>{v.date}</span><span style={{fontSize:11,color:C.mid}}>{v.tech_name}</span></div>
-              <div style={{display:"flex",gap:2,marginBottom:3}}>
-                {Array(v.green_count||0).fill(0).map((_,i)=><span key={i} style={{width:7,height:7,borderRadius:"50%",background:C.green,display:"inline-block"}}/>)}
-                {Array(v.amber_count||0).fill(0).map((_,i)=><span key={i} style={{width:7,height:7,borderRadius:"50%",background:C.amber,display:"inline-block"}}/>)}
-                {Array(v.red_count||0).fill(0).map((_,i)=><span key={i} style={{width:7,height:7,borderRadius:"50%",background:C.red,display:"inline-block"}}/>)}
+            <div style={{fontSize:13,marginBottom:4}}>{e.title}</div>
+            {e.notes&&<div style={{fontSize:12,color:C.mid,marginBottom:4}}>{e.notes}</div>}
+            {e.photo_urls&&e.photo_urls.length>0&&(
+              <div style={{display:"flex",gap:6,marginTop:6,flexWrap:"wrap"}}>
+                {e.photo_urls.map((url,i)=><img key={i} src={url} style={{width:60,height:60,objectFit:"cover",borderRadius:6,border:"1px solid "+C.line}}/>)}
               </div>
-              <div style={{fontSize:11,color:C.mid}}>{v.green_count||0} good · {v.amber_count||0} amber · {v.red_count||0} urgent</div>
+            )}
+            <div style={{marginTop:6,display:"flex",gap:8}}>
+              <StatusBadge status={e.quote_status}/>
+              {e.charge_amount>0&&<span style={{fontSize:11,fontWeight:600,color:C.green}}>€{e.charge_amount}</span>}
             </div>
-          ))}
-          {visits.length===0&&<div style={{fontSize:13,color:C.mid}}>No visits yet.</div>}
-        </Card>
-      </Grid>
+          </div>
+        )):<div style={{fontSize:13,color:C.mid}}>No events yet — events are created during tech visits.</div>}
+      </Card>
     </div>
   );
 }
 
+// ── ADMIN ROOM ─────────────────────────────────────────────────────────────
 function AdminRoom({propId,areaId,roomId,setView}) {
   const [prop,setProp]=useState(null);
   const [area,setArea]=useState(null);
   const [room,setRoom]=useState(null);
-  const [findings,setFindings]=useState([]);
-  const [visits,setVisits]=useState([]);
+  const [events,setEvents]=useState([]);
   const [loading,setLoading]=useState(true);
 
   useEffect(()=>{
-    Promise.all([
-      db.getProperties([propId]),
-      db.getAreas(propId),
-      db.getRooms(propId,areaId),
-      db.getFindings({propId,roomId}),
-      db.getVisits(propId),
-    ]).then(([ps,areas,rooms,f,v])=>{
-      setProp(ps[0]); setArea(areas.find(a=>a.id===areaId));
-      setRoom(rooms.find(r=>r.id===roomId));
-      setFindings(f); setVisits(v); setLoading(false);
+    Promise.all([db.getProperties([propId]),db.getAreas(propId),db.getRooms(propId,areaId),
+      db.getEvents({propId,roomId})]).then(([ps,areas,rooms,e])=>{
+      setProp(ps[0]);setArea(areas.find(a=>a.id===areaId));
+      setRoom(rooms.find(r=>r.id===roomId));setEvents(e);setLoading(false);
     });
   },[propId,areaId,roomId]);
 
@@ -479,56 +458,67 @@ function AdminRoom({propId,areaId,roomId,setView}) {
   return (
     <div>
       <SectionHead title={room.name} sub={room.sub_name+" · "+area.name+" · "+prop.name} action={<RagBadge rag={room.rag}/>} back={()=>setView({page:"a_area",propId,areaId})}/>
-      <Grid cols={1} gap={12}>
-        <Card>
-          <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>Findings</div>
-          {findings.length?findings.map(f=>(
-            <div key={f.id} style={{padding:"9px 0",borderBottom:"1px solid "+C.line}}>
-              <div style={{display:"flex",gap:8,marginBottom:4}}><RagBadge rag={f.rag}/><TypeBadge type={f.type}/></div>
-              <div style={{fontSize:13,marginBottom:4}}>{f.title}</div>
-              <StatusBadge status={f.status}/>
-            </div>
-          )):<div style={{fontSize:13,color:C.mid,padding:"12px 0"}}>No findings for this room.</div>}
-        </Card>
-        <Card>
-          <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>Room audit trail</div>
-          {visits.map(v=>(
-            <div key={v.id} style={{padding:"9px 0",borderBottom:"1px solid "+C.line}}>
-              <div style={{display:"flex",justifyContent:"space-between"}}><span style={{fontSize:13,fontWeight:600}}>{v.date}</span><StatusBadge status="complete"/></div>
-              <div style={{fontSize:11,color:C.mid,marginTop:2}}>Inspected by {v.tech_name}</div>
-            </div>
-          ))}
-          {visits.length===0&&<div style={{fontSize:13,color:C.mid}}>No visits yet.</div>}
-        </Card>
+      <Grid cols={3} gap={10} style={{marginBottom:16}}>
+        <Card><StatBox label="Total events" value={events.length}/></Card>
+        <Card><StatBox label="Urgent" value={events.filter(e=>e.rag==="red").length} rag="red"/></Card>
+        <Card><StatBox label="Complete" value={events.filter(e=>e.rag==="green").length} rag="green"/></Card>
       </Grid>
+      <Card>
+        <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>Room event history</div>
+        {events.length?events.map(e=>(
+          <div key={e.id} style={{padding:"9px 0",borderBottom:"1px solid "+C.line}}>
+            <div style={{display:"flex",gap:8,marginBottom:4,alignItems:"center",flexWrap:"wrap"}}>
+              <RagBadge rag={e.rag}/><TypeBadge type={e.tasks?.type}/>
+              <span style={{fontSize:11,fontWeight:700,color:C.teal}}>{e.tasks?.ref}</span>
+              <span style={{marginLeft:"auto",fontSize:11,color:C.mid}}>{e.completed_at?.slice(0,10)}</span>
+            </div>
+            <div style={{fontSize:13,marginBottom:4}}>{e.title||e.tasks?.name}</div>
+            {e.notes&&<div style={{fontSize:12,color:C.mid}}>{e.notes}</div>}
+            {e.photo_urls&&e.photo_urls.length>0&&(
+              <div style={{display:"flex",gap:6,marginTop:6,flexWrap:"wrap"}}>
+                {e.photo_urls.map((url,i)=><img key={i} src={url} style={{width:60,height:60,objectFit:"cover",borderRadius:6,border:"1px solid "+C.line}}/>)}
+              </div>
+            )}
+          </div>
+        )):<div style={{fontSize:13,color:C.mid}}>No events yet for this room.</div>}
+      </Card>
     </div>
   );
 }
 
+// ── ADMIN CALENDAR ─────────────────────────────────────────────────────────
 function AdminCal({setView}) {
   const [month,setMonth]=useState(7);
   const [schedule,setSchedule]=useState([]);
+  const [users,setUsers]=useState([]);
+  const [months,setMonths]=useState([]);
+  const [loading,setLoading]=useState(true);
   const year=2026;
-  const months=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const monthNames=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
-  useEffect(()=>{ db.getSchedule().then(setSchedule); },[]);
+  useEffect(()=>{
+    Promise.all([db.getSchedule(),db.getUsers()]).then(([s,u])=>{
+      setSchedule(s);setUsers(u.filter(u=>u.role==="tech"));setLoading(false);
+    });
+  },[]);
 
   const firstDay=new Date(year,month,1).getDay();
   const daysInMonth=new Date(year,month+1,0).getDate();
   const cells=Array.from({length:firstDay+daysInMonth},(_,i)=>i<firstDay?null:i-firstDay+1);
-  const getV=(d)=>{
+  const getV=d=>{
     if(!d) return [];
     const ds=year+"-"+String(month+1).padStart(2,"0")+"-"+String(d).padStart(2,"0");
-    return schedule.filter(s=>s.date===ds);
+    return schedule.filter(s=>s.due_date===ds);
   };
 
+  if(loading) return <Spinner/>;
   return (
     <div>
-      <SectionHead title="Schedule calendar" sub="Visit schedule across all properties"/>
+      <SectionHead title="Schedule calendar" sub="12-month visit schedule"/>
       <Card style={{marginBottom:16}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
           <Btn variant="ghost" small onClick={()=>setMonth(m=>Math.max(0,m-1))}>← Prev</Btn>
-          <div style={{fontWeight:700,fontSize:15}}>{months[month]} {year}</div>
+          <div style={{fontWeight:700,fontSize:15}}>{monthNames[month]} {year}</div>
           <Btn variant="ghost" small onClick={()=>setMonth(m=>Math.min(11,m+1))}>Next →</Btn>
         </div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2,marginBottom:6}}>
@@ -537,70 +527,246 @@ function AdminCal({setView}) {
         <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3}}>
           {cells.map((day,i)=>{
             const vs=getV(day);
-            return <div key={i} style={{minHeight:52,padding:3,borderRadius:5,background:vs.length?"#E6F5ED":"transparent",border:"1px solid "+(vs.length?C.green:C.line)}}>
-              {day&&<><div style={{fontSize:11,color:C.slate,fontWeight:vs.length?700:400}}>{day}</div>
-              {vs.map(v=><div key={v.id} style={{fontSize:8,background:C.teal,color:C.white,borderRadius:2,padding:"1px 3px",marginTop:2,lineHeight:1.4}}>{v.prop_name?.split(" ")[0].slice(0,6)}</div>)}</>}
+            return <div key={i} style={{minHeight:52,padding:3,borderRadius:5,background:vs.length?C.tealL:"transparent",border:"1px solid "+(vs.length?C.teal:C.line)}}>
+              {day&&<><div style={{fontSize:11,color:vs.length?C.teal:C.slate,fontWeight:vs.length?700:400}}>{day}</div>
+              {vs.slice(0,2).map((v,i)=><div key={i} style={{fontSize:8,background:C.teal,color:C.white,borderRadius:2,padding:"1px 3px",marginTop:1,lineHeight:1.4,overflow:"hidden",whiteSpace:"nowrap"}}>
+                {v.tasks?.ref}
+              </div>)}
+              {vs.length>2&&<div style={{fontSize:8,color:C.teal}}>+{vs.length-2}</div>}</>}
             </div>;
           })}
         </div>
       </Card>
       <Card>
-        <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>Scheduled visits</div>
-        {schedule.map(s=>(
-          <div key={s.id} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 0",borderBottom:"1px solid "+C.line}}>
-            <div style={{minWidth:86,fontSize:12,fontWeight:600,color:C.teal}}>{s.date}</div>
-            <div style={{flex:1}}><div style={{fontSize:13,fontWeight:600}}>{s.prop_name}</div><div style={{fontSize:11,color:C.mid}}>{s.group_name} · {s.tech_name}</div></div>
+        <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>
+          {monthNames[month]} schedule — {schedule.filter(s=>s.due_date?.startsWith(year+"-"+String(month+1).padStart(2,"0"))).length} tasks
+        </div>
+        {schedule.filter(s=>s.due_date?.startsWith(year+"-"+String(month+1).padStart(2,"0"))).map(s=>(
+          <div key={s.id} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 0",borderBottom:"1px solid "+C.line,flexWrap:"wrap"}}>
+            <div style={{minWidth:80,fontSize:12,fontWeight:600,color:C.teal}}>{s.due_date}</div>
+            <div style={{flex:1}}>
+              <div style={{fontSize:13,fontWeight:600}}>{s.tasks?.ref} — {s.tasks?.name}</div>
+              <div style={{fontSize:11,color:C.mid}}>{s.areas?.icon} {s.areas?.name} · {s.tasks?.est_minutes}min</div>
+            </div>
+            <TypeBadge type={s.tasks?.type}/>
             <StatusBadge status={s.status}/>
           </div>
         ))}
-        <div style={{marginTop:14}}><Btn variant="primary">+ Add visit</Btn></div>
       </Card>
     </div>
   );
 }
 
-function AdminTasks() {
-  const [tasks,setTasks]=useState([]);
+// ── ADMIN FINDINGS / EVENTS ────────────────────────────────────────────────
+function AdminEvents() {
+  const [events,setEvents]=useState([]);
+  const [filter,setFilter]=useState("all");
   const [loading,setLoading]=useState(true);
-  useEffect(()=>{ db.getTasks().then(t=>{setTasks(t);setLoading(false);}); },[]);
+
+  useEffect(()=>{
+    db.getEvents().then(e=>{setEvents(e);setLoading(false);});
+  },[]);
+
   if(loading) return <Spinner/>;
+  const filtered=filter==="all"?events:events.filter(e=>e.rag===filter||e.quote_status===filter);
   return (
     <div>
-      <SectionHead title="Task library" action={<Btn variant="primary" small>+ New task</Btn>}/>
-      {tasks.map(t=>(
-        <Card key={t.id} style={{marginBottom:8}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
-            <div style={{display:"flex",gap:8,alignItems:"center"}}><span style={{fontSize:11,fontWeight:700,color:C.teal,minWidth:36}}>{t.ref}</span><span style={{fontSize:14,fontWeight:600}}>{t.name}</span></div>
-            <TypeBadge type={t.type}/>
+      <SectionHead title="All events" sub="Across all properties — complete audit trail"/>
+      <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
+        {[["all","All"],["green","Good"],["amber","Attention"],["red","Urgent"],["requested","Quote requested"]].map(([v,l])=>(
+          <button key={v} onClick={()=>setFilter(v)} style={{padding:"5px 14px",borderRadius:20,border:"1.5px solid "+(filter===v?C.teal:C.line),background:filter===v?C.teal:C.white,color:filter===v?C.white:C.mid,fontSize:12,fontWeight:600,cursor:"pointer"}}>{l}</button>
+        ))}
+      </div>
+      {filtered.length?filtered.map(e=>(
+        <Card key={e.id} style={{marginBottom:8}}>
+          <div style={{display:"flex",gap:8,marginBottom:6,flexWrap:"wrap",alignItems:"center"}}>
+            <RagBadge rag={e.rag}/><TypeBadge type={e.tasks?.type}/>
+            <span style={{fontSize:11,fontWeight:700,color:C.teal}}>{e.tasks?.ref}</span>
+            <span style={{marginLeft:"auto",fontSize:11,color:C.mid}}>{e.completed_at?.slice(0,10)}</span>
           </div>
-          <div style={{fontSize:12,color:C.mid,marginBottom:8}}>{t.description}</div>
-          <div style={{display:"flex",gap:12,fontSize:11,color:C.mid,flexWrap:"wrap"}}>
-            <span>Frequency: <b style={{color:C.teal}}>{t.frequency}</b></span>
-            <span>Grade: <b style={{color:t.grade==="Licensed"?C.amber:C.mid}}>{t.grade}</b></span>
-            <span>Photo: <b style={{color:t.photo_required?C.teal:C.mid}}>{t.photo_required?"Required":"Optional"}</b></span>
+          <div style={{fontSize:13,fontWeight:600,marginBottom:4}}>{e.title||e.tasks?.name}</div>
+          {e.notes&&<div style={{fontSize:12,color:C.mid,marginBottom:6}}>{e.notes}</div>}
+          {e.photo_urls&&e.photo_urls.length>0&&(
+            <div style={{display:"flex",gap:6,marginBottom:6,flexWrap:"wrap"}}>
+              {e.photo_urls.map((url,i)=><img key={i} src={url} style={{width:60,height:60,objectFit:"cover",borderRadius:6,border:"1px solid "+C.line}}/>)}
+            </div>
+          )}
+          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+            <StatusBadge status={e.quote_status}/>
+            {e.charge_amount>0&&<span style={{fontSize:12,fontWeight:600,color:C.green}}>€{e.charge_amount}</span>}
           </div>
         </Card>
-      ))}
+      )):<Card><div style={{textAlign:"center",padding:32,color:C.mid}}>No events match this filter.</div></Card>}
     </div>
   );
 }
 
-function AdminFindings() {
-  const [findings,setFindings]=useState([]);
+// ── ADMIN MANAGE ───────────────────────────────────────────────────────────
+function AdminManage() {
+  const [tab,setTab]=useState("rooms");
+  const [props,setProps]=useState([]);
+  const [users,setUsers]=useState([]);
+  const [areas,setAreas]=useState([]);
+  const [msg,setMsg]=useState("");
   const [loading,setLoading]=useState(true);
-  useEffect(()=>{ db.getFindings().then(f=>{setFindings(f);setLoading(false);}); },[]);
+
+  // Property form
+  const [pName,setPName]=useState(""); const [pAddr,setPAddr]=useState(""); const [pType,setPType]=useState("Boutique Hotel");
+  // Area form
+  const [aProp,setAProp]=useState(""); const [aName,setAName]=useState(""); const [aIcon,setAIcon]=useState("📋"); const [aRooms,setARooms]=useState(false);
+  // Room form
+  const [rProp,setRProp]=useState(""); const [rArea,setRArea]=useState(""); const [rName,setRName]=useState(""); const [rSub,setRSub]=useState("");
+  // User form
+  const [uName,setUName]=useState(""); const [uRole,setURole]=useState("tech"); const [uEmail,setUEmail]=useState(""); const [uPass,setUPass]=useState("");
+  // Task form
+  const [tProp,setTProp]=useState(""); const [tArea,setTArea]=useState(""); const [tRef,setTRef]=useState(""); const [tName,setTName]=useState("");
+  const [tDesc,setTDesc]=useState(""); const [tType,setTType]=useState("misc"); const [tFreq,setTFreq]=useState("Monthly");
+  const [tGrade,setTGrade]=useState("General"); const [tPhoto,setTPhoto]=useState(false);
+  const [tMins,setTMins]=useState("30"); const [tRate,setTRate]=useState("0"); const [tBom,setTBom]=useState("");
+
+  useEffect(()=>{
+    Promise.all([db.getProperties(),db.getUsers()]).then(([p,u])=>{
+      setProps(p);setUsers(u);setLoading(false);
+      if(p.length){setRProp(p[0].id);setAProp(p[0].id);setTProp(p[0].id);}
+    });
+  },[]);
+
+  useEffect(()=>{if(rProp) db.getAreas(rProp).then(setAreas);},[rProp]);
+  useEffect(()=>{if(tProp) db.getAreas(tProp).then(a=>{setAreas(a);if(a.length) setTArea(a[0].id);});},[tProp]);
+
+  const notify=m=>{setMsg(m);setTimeout(()=>setMsg(""),4000);};
+
+  const addProp=async()=>{
+    if(!pName||!pAddr){notify("Name and address required.");return;}
+    await db.addProperty(pName,pAddr,pType);
+    setPName("");setPAddr("");
+    db.getProperties().then(setProps);
+    notify("Property added ✓");
+  };
+
+  const addArea=async()=>{
+    if(!aProp||!aName){notify("Property and area name required.");return;}
+    await db.addArea(aProp,aName,aIcon,aRooms);
+    setAName("");
+    notify("Area added ✓");
+  };
+
+  const addRoom=async()=>{
+    if(!rProp||!rArea||!rName){notify("Property, area and room name required.");return;}
+    await db.addRoom(rProp,rArea,rName,rSub);
+    setRName("");setRSub("");
+    notify("Room added ✓");
+  };
+
+  const addUser=async()=>{
+    if(!uName||!uEmail||!uPass){notify("Name, email and password required.");return;}
+    try{ await db.addUser(uName,uRole,uEmail,uPass); setUName("");setUEmail("");setUPass(""); db.getUsers().then(setUsers); notify("User added ✓"); }
+    catch(e){ notify("Error: "+e.message); }
+  };
+
+  const addTask=async()=>{
+    if(!tRef||!tName||!tProp||!tArea){notify("Ref, name, property and area required.");return;}
+    try{
+      await db.addTask({prop_id:tProp,area_id:tArea,room_id:null,ref:tRef,name:tName,description:tDesc,
+        type:tType,frequency:tFreq,grade:tGrade,photo_req:tPhoto,est_minutes:parseInt(tMins)||30,
+        charge_rate:parseFloat(tRate)||0,bom:tBom||null});
+      setTRef("");setTName("");setTDesc("");setTBom("");
+      notify("Task added ✓ — generate schedule to include in visits");
+    } catch(e){ notify("Error: "+e.message); }
+  };
+
   if(loading) return <Spinner/>;
+
+  const tabs=[["rooms","Add room"],["properties","Properties"],["areas","Add area"],["tasks","Add task"],["users","Users"]];
+  const typeOpts=[{v:"misc",l:"General"},{v:"elec",l:"Electrical"},{v:"hydro",l:"Water/Legionella"},{v:"hvac",l:"HVAC"},{v:"fire",l:"Fire"},{v:"pest",l:"Pest"},{v:"pool",l:"Pool"}];
+  const freqOpts=[{v:"Monthly",l:"Monthly"},{v:"Quarterly",l:"Quarterly"},{v:"Every 6 months",l:"Every 6 months"},{v:"Annual",l:"Annual"},{v:"One-off",l:"One-off"}];
+
   return (
     <div>
-      <SectionHead title="All findings" sub="Across all properties"/>
-      {findings.map(f=>(
-        <Card key={f.id} style={{marginBottom:8}}>
-          <div style={{display:"flex",gap:8,marginBottom:6,flexWrap:"wrap",alignItems:"center"}}><RagBadge rag={f.rag}/><TypeBadge type={f.type}/><span style={{fontSize:11,fontWeight:700,color:C.teal}}>{f.ref}</span><span style={{marginLeft:"auto",fontSize:11,color:C.mid}}>{f.date}</span></div>
-          <div style={{fontSize:13,marginBottom:6}}>{f.title}</div>
-          <StatusBadge status={f.status}/>
-        </Card>
-      ))}
-      {findings.length===0&&<Card><div style={{textAlign:"center",padding:32,color:C.mid}}>No findings yet.</div></Card>}
+      <SectionHead title="Manage" sub="Add properties, areas, rooms, tasks and users"/>
+      {msg&&<div style={{marginBottom:14,padding:"10px 14px",background:C.greenL,color:C.green,borderRadius:8,fontSize:13,fontWeight:600}}>{msg}</div>}
+      <div style={{display:"flex",gap:6,marginBottom:20,flexWrap:"wrap"}}>
+        {tabs.map(([id,l])=>(
+          <button key={id} onClick={()=>setTab(id)} style={{padding:"7px 16px",borderRadius:20,border:"1.5px solid "+(tab===id?C.teal:C.line),background:tab===id?C.teal:C.white,color:tab===id?C.white:C.mid,fontSize:13,fontWeight:600,cursor:"pointer"}}>{l}</button>
+        ))}
+      </div>
+
+      {tab==="properties"&&<Card>
+        <div style={{fontWeight:700,fontSize:14,marginBottom:14}}>Add new property</div>
+        <Inp label="Property name" value={pName} onChange={setPName} placeholder="e.g. Hotel Fortina, Sliema"/>
+        <Inp label="Address" value={pAddr} onChange={setPAddr} placeholder="Full address"/>
+        <Sel label="Type" value={pType} onChange={setPType} options={[{v:"Boutique Hotel",l:"Boutique Hotel"},{v:"Boutique Hostel",l:"Boutique Hostel"},{v:"Apartment Block",l:"Apartment Block"},{v:"Commercial",l:"Commercial Office"}]}/>
+        <Btn onClick={addProp}>Add property</Btn>
+        <div style={{marginTop:20,fontWeight:700,fontSize:13,marginBottom:10}}>Existing properties</div>
+        {props.map(p=><div key={p.id} style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:"1px solid "+C.line,fontSize:13}}>
+          <span style={{fontWeight:600}}>{p.name}</span><span style={{color:C.mid}}>{p.type}</span>
+        </div>)}
+      </Card>}
+
+      {tab==="areas"&&<Card>
+        <div style={{fontWeight:700,fontSize:14,marginBottom:14}}>Add new area</div>
+        <Sel label="Property" value={aProp} onChange={setAProp} options={props.map(p=>({v:p.id,l:p.name}))}/>
+        <Inp label="Area name" value={aName} onChange={setAName} placeholder="e.g. Pool Terrace, Basement"/>
+        <Inp label="Icon (emoji)" value={aIcon} onChange={setAIcon} placeholder="e.g. 🏊"/>
+        <label style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer",marginBottom:16,fontSize:13}}>
+          <input type="checkbox" checked={aRooms} onChange={e=>setARooms(e.target.checked)} style={{width:16,height:16}}/>
+          This area contains individual rooms
+        </label>
+        <Btn onClick={addArea}>Add area</Btn>
+      </Card>}
+
+      {tab==="rooms"&&<Card>
+        <div style={{fontWeight:700,fontSize:14,marginBottom:14}}>Add new room</div>
+        <Sel label="Property" value={rProp} onChange={setRProp} options={props.map(p=>({v:p.id,l:p.name}))}/>
+        <Sel label="Area" value={rArea} onChange={setRArea} options={[{v:"",l:"Select area…"},...areas.map(a=>({v:a.id,l:a.name}))]}/>
+        <Inp label="Room name" value={rName} onChange={setRName} placeholder="e.g. Room 207"/>
+        <Inp label="Room type (optional)" value={rSub} onChange={setRSub} placeholder="e.g. Deluxe Double"/>
+        <Btn onClick={addRoom}>Add room</Btn>
+      </Card>}
+
+      {tab==="tasks"&&<Card>
+        <div style={{fontWeight:700,fontSize:14,marginBottom:14}}>Add new task</div>
+        <Grid cols={2} gap={8}>
+          <Sel label="Property" value={tProp} onChange={setTProp} options={props.map(p=>({v:p.id,l:p.name}))}/>
+          <Sel label="Area" value={tArea} onChange={setTArea} options={[{v:"",l:"Select area…"},...areas.map(a=>({v:a.id,l:a.name}))]}/>
+        </Grid>
+        <Grid cols={2} gap={8}>
+          <Inp label="Reference" value={tRef} onChange={setTRef} placeholder="e.g. W-05"/>
+          <Sel label="Type" value={tType} onChange={setTType} options={typeOpts}/>
+        </Grid>
+        <Inp label="Task name" value={tName} onChange={setTName} placeholder="e.g. Biocide dosing check"/>
+        <Inp label="Description (shown to tech)" value={tDesc} onChange={setTDesc} placeholder="Step by step instruction…" rows={2}/>
+        <Inp label="Bill of materials (what tech needs to bring)" value={tBom} onChange={setTBom} placeholder="e.g. Thermometer, biocide spray, gloves" rows={2}/>
+        <Grid cols={2} gap={8}>
+          <Sel label="Frequency" value={tFreq} onChange={setTFreq} options={freqOpts}/>
+          <Sel label="Grade required" value={tGrade} onChange={setTGrade} options={[{v:"General",l:"General hand"},{v:"Licensed",l:"Licensed engineer"}]}/>
+        </Grid>
+        <Grid cols={2} gap={8}>
+          <Inp label="Est. time (minutes)" value={tMins} onChange={setTMins} placeholder="30" type="number"/>
+          <Inp label="Charge rate (€)" value={tRate} onChange={setTRate} placeholder="0" type="number"/>
+        </Grid>
+        <label style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer",marginBottom:16,fontSize:13}}>
+          <input type="checkbox" checked={tPhoto} onChange={e=>setTPhoto(e.target.checked)} style={{width:16,height:16}}/>
+          Photo required from technician
+        </label>
+        <Btn onClick={addTask}>Add task</Btn>
+      </Card>}
+
+      {tab==="users"&&<Card>
+        <div style={{fontWeight:700,fontSize:14,marginBottom:14}}>Add new user</div>
+        <Inp label="Full name" value={uName} onChange={setUName} placeholder="e.g. John Borg"/>
+        <Sel label="Role" value={uRole} onChange={setURole} options={[{v:"tech",l:"Tech / Engineer"},{v:"owner",l:"Property owner"},{v:"admin",l:"Admin"}]}/>
+        <Inp label="Email address" value={uEmail} onChange={setUEmail} placeholder="john@example.com" type="email"/>
+        <Inp label="Password" value={uPass} onChange={setUPass} placeholder="Choose a password" type="password"/>
+        <Btn onClick={addUser}>Add user</Btn>
+        <div style={{marginTop:20,fontWeight:700,fontSize:13,marginBottom:10}}>All users ({users.length})</div>
+        {users.map(u=>(
+          <div key={u.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:"1px solid "+C.line}}>
+            <div><div style={{fontSize:13,fontWeight:600}}>{u.name}</div><div style={{fontSize:11,color:C.mid}}>{u.email}</div></div>
+            <span style={{padding:"2px 10px",borderRadius:20,background:{admin:C.tealL,tech:"#EEF2FF",owner:C.amberL}[u.role]||C.bg,color:{admin:C.teal,tech:"#6366F1",owner:C.amber}[u.role]||C.mid,fontSize:11,fontWeight:600}}>{u.role}</span>
+          </div>
+        ))}
+      </Card>}
     </div>
   );
 }
@@ -609,26 +775,45 @@ function AdminFindings() {
 function TechDash({user,setView}) {
   const [schedule,setSchedule]=useState([]);
   const [loading,setLoading]=useState(true);
-  useEffect(()=>{ db.getSchedule(user.id).then(s=>{setSchedule(s);setLoading(false);}); },[user.id]);
+
+  useEffect(()=>{
+    db.getSchedule({techId:user.id,status:"scheduled"}).then(s=>{
+      // If no assigned visits, show all scheduled (for demo)
+      if(s.length) { setSchedule(s); setLoading(false); }
+      else db.getSchedule({status:"scheduled"}).then(all=>{setSchedule(all.slice(0,10));setLoading(false);});
+    });
+  },[user.id]);
+
   if(loading) return <Spinner/>;
+
+  // Group by due_date
+  const byDate={};
+  schedule.forEach(s=>{ if(!byDate[s.due_date]) byDate[s.due_date]=[]; byDate[s.due_date].push(s); });
+  const dates=Object.keys(byDate).sort();
+
   return (
     <div>
-      <SectionHead title="My visits" sub={user.name+" · upcoming assignments"}/>
-      {schedule.length===0&&<Card><div style={{textAlign:"center",padding:32,color:C.mid}}>No visits assigned. Contact admin.</div></Card>}
-      {schedule.map((s,i)=>(
-        <Card key={s.id} style={{marginBottom:12,display:"flex",alignItems:"center",gap:14}}>
-          <div style={{minWidth:72,textAlign:"center",padding:"8px 0",background:C.tealL,borderRadius:8}}>
-            <div style={{fontSize:10,fontWeight:700,color:C.teal}}>{s.date?.split("-")[1]}</div>
-            <div style={{fontSize:22,fontWeight:700,color:C.teal}}>{s.date?.split("-")[2]}</div>
+      <SectionHead title="My visits" sub={user.name+" · scheduled tasks"}/>
+      {dates.length===0&&<Card><div style={{textAlign:"center",padding:32,color:C.mid}}>No visits assigned. Contact admin.</div></Card>}
+      {dates.map(date=>(
+        <Card key={date} style={{marginBottom:14}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+            <div style={{fontWeight:700,fontSize:15,color:C.teal}}>{date}</div>
+            <span style={{fontSize:12,color:C.mid}}>{byDate[date].length} tasks</span>
           </div>
-          <div style={{flex:1}}>
-            <div style={{fontSize:14,fontWeight:700}}>{s.prop_name}</div>
-            <div style={{fontSize:12,color:C.mid}}>{s.group_name}</div>
-            <div style={{fontSize:11,color:C.mid}}>{s.task_count} tasks</div>
-          </div>
-          <div style={{display:"flex",flexDirection:"column",gap:6,alignItems:"flex-end"}}>
-            <StatusBadge status={s.status}/>
-            {s.status==="scheduled"&&<Btn onClick={()=>setView({page:"t_cat",schedId:s.id,propId:s.prop_id,propName:s.prop_name,techId:user.id,techName:user.name})} small>Start →</Btn>}
+          {byDate[date].slice(0,3).map(s=>(
+            <div key={s.id} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 0",borderBottom:"1px solid "+C.line}}>
+              <span style={{fontSize:11,fontWeight:700,color:C.teal,minWidth:40}}>{s.tasks?.ref}</span>
+              <div style={{flex:1}}>
+                <div style={{fontSize:13}}>{s.tasks?.name}</div>
+                <div style={{fontSize:11,color:C.mid}}>{s.areas?.icon} {s.areas?.name} · {s.tasks?.est_minutes}min</div>
+              </div>
+              <TypeBadge type={s.tasks?.type}/>
+            </div>
+          ))}
+          {byDate[date].length>3&&<div style={{fontSize:12,color:C.mid,marginTop:6}}>+{byDate[date].length-3} more tasks</div>}
+          <div style={{marginTop:12}}>
+            <Btn small onClick={()=>setView({page:"t_visit",date,tasks:byDate[date],user})}>Start {date} visit →</Btn>
           </div>
         </Card>
       ))}
@@ -636,148 +821,153 @@ function TechDash({user,setView}) {
   );
 }
 
-function TechCat({propId,propName,schedId,techId,techName,setView}) {
-  const [areas,setAreas]=useState([]);
-  const [tasks,setTasks]=useState([]);
-  const [loading,setLoading]=useState(true);
-  useEffect(()=>{ Promise.all([db.getAreas(propId),db.getTasks()]).then(([a,t])=>{setAreas(a);setTasks(t);setLoading(false);}); },[propId]);
-  if(loading) return <Spinner/>;
-  return (
-    <div>
-      <SectionHead title={propName} back={()=>setView({page:"t_dash"})}/>
-      <div style={{fontWeight:600,fontSize:14,color:C.mid,marginBottom:12}}>Select area to inspect</div>
-      <Grid cols={2} gap={10}>
-        {areas.map(a=>(
-          <Card key={a.id} onClick={()=>setView({page:"t_area",schedId,propId,propName,areaId:a.id,areaName:a.name,areaIcon:a.icon,hasRooms:a.has_rooms,techId,techName})} style={{display:"flex",gap:12,alignItems:"center"}}>
-            <span style={{fontSize:24}}>{a.icon}</span>
-            <div><div style={{fontWeight:600,fontSize:14}}>{a.name}</div><div style={{fontSize:11,color:C.mid}}>{tasks.length} tasks</div></div>
-          </Card>
-        ))}
-      </Grid>
-    </div>
-  );
-}
-
-function TechArea({propId,propName,schedId,areaId,areaName,areaIcon,hasRooms,techId,techName,setView}) {
-  const [rooms,setRooms]=useState([]);
-  const [loading,setLoading]=useState(true);
-  useEffect(()=>{ db.getRooms(propId,areaId).then(r=>{setRooms(r);setLoading(false);}); },[propId,areaId]);
-  if(loading) return <Spinner/>;
-  return (
-    <div>
-      <SectionHead title={areaIcon+" "+areaName} sub={propName} back={()=>setView({page:"t_cat",schedId,propId,propName,techId,techName})}/>
-      {hasRooms&&rooms.length>0?(
-        <><div style={{fontWeight:600,fontSize:14,color:C.mid,marginBottom:12}}>Select room</div>
-        <Grid cols={2} gap={10}>
-          {rooms.map(r=>(
-            <Card key={r.id} onClick={()=>setView({page:"t_check",schedId,propId,propName,areaId,areaName,areaIcon,roomId:r.id,roomName:r.name,techId,techName})}>
-              <div style={{fontWeight:700,fontSize:14}}>{r.name}</div>
-              <div style={{fontSize:11,color:C.mid}}>{r.sub_name}</div>
-            </Card>
-          ))}
-        </Grid></>
-      ):(
-        <Btn onClick={()=>setView({page:"t_check",schedId,propId,propName,areaId,areaName,areaIcon,roomId:null,roomName:null,techId,techName})}>Start area checklist →</Btn>
-      )}
-    </div>
-  );
-}
-
-function TechCheck({schedId,propId,propName,areaId,areaName,areaIcon,roomId,roomName,techId,techName,setView}) {
-  const [tasks,setTasks]=useState([]);
-  const [ts,setTs]=useState({});
-  const [submitted,setSubmitted]=useState(false);
+function TechVisit({date,tasks,user,setView}) {
+  const [taskStates,setTaskStates]=useState({});
   const [submitting,setSubmitting]=useState(false);
-  useEffect(()=>{
-    if(roomId) db.getTasksForRoom(propId,areaId,roomId).then(t=>{ if(t.length) setTasks(t); else db.getTasks().then(setTasks); });
-    else db.getTasksForArea(propId,areaId).then(t=>{ if(t.length) setTasks(t); else db.getTasks().then(setTasks); });
-  },[propId,areaId,roomId]);
+  const [submitted,setSubmitted]=useState(false);
+  const [current,setCurrent]=useState(0);
 
-  const set=(id,field,val)=>setTs(prev=>({...prev,[id]:{...(prev[id]||{}),[field]:val}}));
-  const completed=Object.keys(ts).filter(id=>ts[id]?.rag).length;
+  const set=(id,field,val)=>setTaskStates(p=>({...p,[id]:{...(p[id]||{}),[field]:val}}));
+  const done=Object.keys(taskStates).filter(id=>taskStates[id]?.rag).length;
+  const task=tasks[current];
+  const ts=taskStates[task?.id]||{};
 
-  const submit = async () => {
+  const submitAll=async()=>{
     setSubmitting(true);
-    // Upload photos first, collect URLs
-    const results = await Promise.all(tasks.map(async t=>{
-      const taskState = ts[t.id]||{};
-      let photoUrl = null;
-      if(taskState.photoFile) {
-        const path = propId+"/"+areaId+"/"+(roomId||"area")+"/"+t.ref+"_"+Date.now()+".jpg";
-        photoUrl = await db.uploadPhoto(taskState.photoFile, path);
+    try {
+      for(const s of tasks) {
+        const state=taskStates[s.id]||{};
+        const rag=state.rag||"green";
+        // Upload photos
+        let photoUrls=[];
+        if(state.photoFile) {
+          const path=s.prop_id+"/"+s.area_id+"/"+(s.room_id||"area")+"/"+s.task_id+"_"+Date.now()+".jpg";
+          const url=await db.uploadPhoto(state.photoFile,path);
+          if(url) photoUrls=[url];
+        }
+        // Create event
+        await db.createEvent({
+          schedule_id:s.id,
+          task_id:s.task_id,
+          prop_id:s.prop_id,
+          area_id:s.area_id,
+          room_id:s.room_id||null,
+          tech_id:user.id,
+          rag,
+          title:s.tasks?.name,
+          notes:state.note||"",
+          photo_urls:photoUrls,
+          chargeable:true,
+          charge_amount:s.tasks?.charge_rate||0,
+          quote_status:"none",
+          month_label:s.month_label,
+          visible_owner:true,
+        });
+        await db.completeScheduleEntry(s.id);
       }
-      return {
-        ref: t.ref, name: t.name, type: t.type,
-        rag: taskState.rag||"green",
-        note: taskState.note||"",
-        photo: taskState.photo||false,
-        photoUrl,
-      };
-    }));
-    await db.submitVisit({schedId,propId,areaId,roomId,techId,techName},results);
-    setSubmitted(true); setSubmitting(false);
+      setSubmitted(true);
+    } catch(e) { alert("Error submitting: "+e.message); }
+    setSubmitting(false);
   };
 
   if(submitted) return (
-    <Card style={{textAlign:"center",padding:40}}>
-      <div style={{fontSize:40,marginBottom:12}}>✅</div>
-      <div style={{fontSize:20,fontWeight:700,color:C.green,marginBottom:8}}>Submitted</div>
-      <div style={{fontSize:13,color:C.mid,marginBottom:24}}>Results saved. Red findings flagged to owner.</div>
-      <Btn onClick={()=>setView({page:"t_area",schedId,propId,propName,areaId,areaName,areaIcon,hasRooms:!!roomId,techId,techName})}>Back to areas</Btn>
+    <Card style={{textAlign:"center",padding:48}}>
+      <div style={{fontSize:48,marginBottom:12}}>✅</div>
+      <div style={{fontSize:22,fontWeight:700,color:C.green,marginBottom:8}}>Visit complete</div>
+      <div style={{fontSize:14,color:C.mid,marginBottom:8}}>{done} tasks logged as events</div>
+      <div style={{fontSize:13,color:C.mid,marginBottom:24}}>All results saved. Owner can now view events.</div>
+      <Btn onClick={()=>setView({page:"t_dash"})}>Back to visits</Btn>
     </Card>
   );
 
+  if(!task) return null;
   return (
     <div>
-      <SectionHead title={roomName||areaName} sub={propName+" · "+completed+"/"+tasks.length+" complete"} back={()=>setView({page:"t_area",schedId,propId,propName,areaId,areaName,areaIcon,hasRooms:!!roomId,techId,techName})}/>
-      <div style={{marginBottom:14,padding:"10px 14px",background:C.tealL,borderRadius:8,fontSize:13,color:C.teal}}>Rate each task and photograph where required.</div>
-      {tasks.map(task=>{
-        const t=ts[task.id]||{};
-        return (
-          <Card key={task.id} style={{marginBottom:10,borderLeft:"4px solid "+(t.rag?RAG[t.rag].border:C.line)}}>
-            <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
-              <div style={{display:"flex",gap:8,alignItems:"center"}}><span style={{fontSize:11,fontWeight:700,color:C.teal,minWidth:36}}>{task.ref}</span><span style={{fontSize:14,fontWeight:600}}>{task.name}</span></div>
-              <TypeBadge type={task.type}/>
-            </div>
-            <div style={{fontSize:12,color:C.mid,marginBottom:10}}>{task.description}</div>
-            <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
-              {["green","amber","red"].map(r=>(
-                <button key={r} onClick={()=>set(task.id,"rag",r)} style={{padding:"4px 14px",borderRadius:20,border:"1.5px solid "+(t.rag===r?RAG[r].border:C.line),background:t.rag===r?RAG[r].bg:C.white,color:t.rag===r?RAG[r].text:C.mid,fontSize:12,fontWeight:600,cursor:"pointer"}}>
-                  {RAG[r].label}
-                </button>
-              ))}
-              {task.photo_required&&(
-                <label style={{marginLeft:"auto",padding:"4px 12px",borderRadius:7,border:"1.5px solid "+(t.photo?C.teal:C.line),background:t.photo?C.tealL:C.white,color:t.photo?C.teal:C.mid,fontSize:12,cursor:"pointer",display:"inline-flex",alignItems:"center",gap:6}}>
-                  {t.photo?"📷 "+t.photoName:"📷 Take photo"}
-                  <input type="file" accept="image/*" capture="environment"
-                    style={{display:"none"}}
-                    onChange={async(e)=>{
-                      const file=e.target.files[0];
-                      if(!file) return;
-                      set(task.id,"photo",true);
-                      set(task.id,"photoName",file.name);
-                      set(task.id,"photoFile",file);
-                      set(task.id,"photoPreview",URL.createObjectURL(file));
-                    }}/>
-                </label>
-              )}
-            </div>
-            {t.rag&&t.rag!=="green"&&(
-              <textarea placeholder="Describe the finding…" rows={2} value={t.note||""} onChange={e=>set(task.id,"note",e.target.value)}
-                style={{marginTop:10,width:"100%",padding:8,border:"1px solid "+C.line,borderRadius:6,fontSize:13,resize:"vertical",fontFamily:"inherit",boxSizing:"border-box"}}/>
-            )}
-            {t.photoPreview&&(
-              <div style={{marginTop:10}}>
-                <img src={t.photoPreview} alt="Photo preview" style={{width:"100%",maxHeight:200,objectFit:"cover",borderRadius:8,border:"1px solid "+C.line}}/>
-                <div style={{fontSize:11,color:C.teal,marginTop:4}}>✓ Photo ready to upload</div>
-              </div>
-            )}
-          </Card>
-        );
-      })}
-      <div style={{marginTop:16,display:"flex",gap:10}}>
-        <Btn onClick={submit} disabled={submitting}>{submitting?"Saving…":"Submit ("+completed+"/"+tasks.length+")"}</Btn>
-        <Btn variant="secondary">Save draft</Btn>
+      <SectionHead title={date} sub={current+1+" of "+tasks.length+" · "+done+" complete"} back={()=>setView({page:"t_dash"})}/>
+
+      {/* Progress bar */}
+      <div style={{height:4,background:C.line,borderRadius:2,marginBottom:20}}>
+        <div style={{height:"100%",background:C.teal,borderRadius:2,width:((current+1)/tasks.length*100)+"%",transition:"width .3s"}}/>
+      </div>
+
+      {/* Current task */}
+      <Card style={{marginBottom:14,borderLeft:"4px solid "+(ts.rag?RAG[ts.rag].border:C.teal)}}>
+        <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
+          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+            <span style={{fontSize:12,fontWeight:700,color:C.teal}}>{task.tasks?.ref}</span>
+            <TypeBadge type={task.tasks?.type}/>
+          </div>
+          <span style={{fontSize:12,color:C.mid}}>{task.tasks?.est_minutes}min</span>
+        </div>
+        <div style={{fontSize:16,fontWeight:700,marginBottom:6}}>{task.tasks?.name}</div>
+        <div style={{fontSize:11,color:C.mid}}>{task.areas?.icon} {task.areas?.name}{task.rooms?" · "+task.rooms.name:""}</div>
+
+        {task.tasks?.description&&(
+          <div style={{marginTop:10,padding:"10px 12px",background:C.bg,borderRadius:8,fontSize:13,color:C.slate,lineHeight:1.6}}>
+            {task.tasks.description}
+          </div>
+        )}
+
+        {task.tasks?.bom&&(
+          <div style={{marginTop:10,padding:"10px 12px",background:C.amberL,borderRadius:8}}>
+            <div style={{fontSize:11,fontWeight:700,color:C.amber,marginBottom:4}}>📦 BRING WITH YOU</div>
+            <div style={{fontSize:13,color:C.amber}}>{task.tasks.bom}</div>
+          </div>
+        )}
+
+        <div style={{marginTop:14}}>
+          <div style={{fontSize:12,fontWeight:600,color:C.slate,marginBottom:8}}>Task outcome:</div>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+            {["green","amber","red"].map(r=>(
+              <button key={r} onClick={()=>set(task.id,"rag",r)} style={{padding:"8px 20px",borderRadius:20,border:"2px solid "+(ts.rag===r?RAG[r].border:C.line),background:ts.rag===r?RAG[r].bg:C.white,color:ts.rag===r?RAG[r].text:C.mid,fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                {RAG[r].label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {ts.rag&&ts.rag!=="green"&&(
+          <textarea placeholder="Describe the finding…" rows={3} value={ts.note||""} onChange={e=>set(task.id,"note",e.target.value)}
+            style={{marginTop:12,width:"100%",padding:"8px 12px",border:"1px solid "+C.line,borderRadius:7,fontSize:13,resize:"vertical",fontFamily:"inherit",outline:"none"}}/>
+        )}
+
+        {task.tasks?.photo_req&&(
+          <label style={{marginTop:12,display:"inline-flex",alignItems:"center",gap:8,padding:"8px 14px",borderRadius:8,border:"1.5px solid "+(ts.photo?C.teal:C.line),background:ts.photo?C.tealL:C.white,color:ts.photo?C.teal:C.mid,fontSize:13,cursor:"pointer"}}>
+            {ts.photo?"📷 Photo captured ✓":"📷 Take photo (required)"}
+            <input type="file" accept="image/*" capture="environment" style={{display:"none"}}
+              onChange={async e=>{
+                const file=e.target.files[0]; if(!file) return;
+                set(task.id,"photo",true); set(task.id,"photoFile",file);
+                set(task.id,"photoPreview",URL.createObjectURL(file));
+              }}/>
+          </label>
+        )}
+        {ts.photoPreview&&<img src={ts.photoPreview} style={{marginTop:8,width:"100%",maxHeight:180,objectFit:"cover",borderRadius:8,border:"1px solid "+C.line}}/>}
+      </Card>
+
+      {/* Navigation */}
+      <div style={{display:"flex",gap:10,justifyContent:"space-between"}}>
+        <Btn variant="ghost" onClick={()=>setCurrent(c=>Math.max(0,c-1))} disabled={current===0}>← Previous</Btn>
+        {current<tasks.length-1?(
+          <Btn onClick={()=>setCurrent(c=>c+1)} disabled={!ts.rag}>Next task →</Btn>
+        ):(
+          <Btn onClick={submitAll} disabled={submitting||done===0} variant="primary">
+            {submitting?"Submitting…":"Submit all "+done+" tasks ✓"}
+          </Btn>
+        )}
+      </div>
+
+      {/* Task list overview */}
+      <div style={{marginTop:20}}>
+        <div style={{fontSize:12,fontWeight:600,color:C.mid,marginBottom:8}}>All tasks this visit</div>
+        <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+          {tasks.map((t,i)=>{
+            const s=taskStates[t.id]||{};
+            return <button key={t.id} onClick={()=>setCurrent(i)} style={{padding:"4px 8px",borderRadius:6,border:"1.5px solid "+(i===current?C.teal:s.rag?RAG[s.rag].border:C.line),background:i===current?C.tealL:s.rag?RAG[s.rag].bg:C.white,color:i===current?C.teal:s.rag?RAG[s.rag].text:C.mid,fontSize:11,fontWeight:600,cursor:"pointer"}}>
+              {t.tasks?.ref}
+            </button>;
+          })}
+        </div>
       </div>
     </div>
   );
@@ -786,33 +976,39 @@ function TechCheck({schedId,propId,propName,areaId,areaName,areaIcon,roomId,room
 // ── OWNER PORTAL ────────────────────────────────────────────────────────────
 function OwnerDash({user,setView}) {
   const [props,setProps]=useState([]);
-  const [findings,setFindings]=useState([]);
+  const [events,setEvents]=useState([]);
   const [loading,setLoading]=useState(true);
 
   useEffect(()=>{
     const ids=user.prop_ids||[];
-    Promise.all([db.getProperties(ids),db.getFindings({propIds:ids})]).then(([p,f])=>{
-      setProps(p); setFindings(f); setLoading(false);
+    Promise.all([db.getProperties(ids),db.getEvents({propIds:ids.length?ids:undefined})]).then(([p,e])=>{
+      setProps(p);setEvents(e);setLoading(false);
     });
   },[user.id]);
 
   if(loading) return <Spinner/>;
-  const open=findings.filter(f=>f.status==="pending"||f.status==="pending_quote").length;
+  const open=events.filter(e=>e.quote_status==="none"&&e.rag!=="green").length;
   return (
     <div>
-      <SectionHead title={"Welcome, "+user.name.split(" ")[0]} sub="Your portfolio"/>
+      <SectionHead title={"Welcome, "+user.name.split(" ")[0]} sub="Your property portfolio"/>
       <Grid cols={4} gap={10}>
         <Card><StatBox label="Properties" value={props.length}/></Card>
-        <Card><StatBox label="Open items" value={open}/></Card>
-        <Card><StatBox label="Urgent" value={findings.filter(f=>f.rag==="red").length} rag="red"/></Card>
-        <Card><StatBox label="Amber" value={findings.filter(f=>f.rag==="amber").length} rag="amber"/></Card>
+        <Card><StatBox label="Events logged" value={events.length}/></Card>
+        <Card><StatBox label="Urgent" value={events.filter(e=>e.rag==="red").length} rag="red"/></Card>
+        <Card><StatBox label="Awaiting action" value={open}/></Card>
       </Grid>
       <div style={{height:14}}/>
       {props.map(p=>(
         <Card key={p.id} onClick={()=>setView({page:"o_prop",propId:p.id})} style={{marginBottom:12}}>
           <div style={{display:"flex",justifyContent:"space-between",marginBottom:10}}>
-            <div><div style={{fontWeight:700,fontSize:15}}>{p.name}</div><div style={{fontSize:12,color:C.mid}}>{p.address}</div></div>
+            <div><div style={{fontWeight:700,fontSize:15}}>{p.name}</div>
+            <div style={{fontSize:12,color:C.mid}}>{p.address}</div></div>
             <RagBadge rag={p.rag}/>
+          </div>
+          <div style={{fontSize:12,color:C.mid}}>
+            {events.filter(e=>e.prop_id===p.id&&e.rag==="red").length} urgent ·
+            {" "}{events.filter(e=>e.prop_id===p.id&&e.rag==="amber").length} amber ·
+            {" "}{events.filter(e=>e.prop_id===p.id&&e.rag==="green").length} complete
           </div>
         </Card>
       ))}
@@ -823,26 +1019,25 @@ function OwnerDash({user,setView}) {
 function OwnerProp({user,propId,setView}) {
   const [prop,setProp]=useState(null);
   const [areas,setAreas]=useState([]);
-  const [findings,setFindings]=useState([]);
+  const [events,setEvents]=useState([]);
   const [loading,setLoading]=useState(true);
 
   useEffect(()=>{
-    if(!user.prop_ids?.includes(propId)){setLoading(false);return;}
-    Promise.all([db.getProperties([propId]),db.getAreas(propId),db.getFindings({propId})]).then(([ps,a,f])=>{
-      setProp(ps[0]); setAreas(a); setFindings(f); setLoading(false);
+    Promise.all([db.getProperties([propId]),db.getAreas(propId),db.getEvents({propId})]).then(([ps,a,e])=>{
+      setProp(ps[0]);setAreas(a);setEvents(e);setLoading(false);
     });
   },[propId]);
 
   if(loading) return <Spinner/>;
-  if(!prop) return <Card><div style={{color:C.mid,padding:32,textAlign:"center"}}>Property not found.</div></Card>;
+  if(!prop) return null;
   return (
     <div>
       <SectionHead title={prop.name} sub={prop.address} action={<RagBadge rag={prop.rag}/>} back={()=>setView({page:"o_dash"})}/>
       <Grid cols={4} gap={10}>
-        <Card><StatBox label="Findings" value={findings.length}/></Card>
-        <Card><StatBox label="Urgent" value={findings.filter(f=>f.rag==="red").length} rag="red"/></Card>
-        <Card><StatBox label="Amber" value={findings.filter(f=>f.rag==="amber").length} rag="amber"/></Card>
-        <Card><StatBox label="Areas" value={areas.length}/></Card>
+        <Card><StatBox label="Events" value={events.length}/></Card>
+        <Card><StatBox label="Urgent" value={events.filter(e=>e.rag==="red").length} rag="red"/></Card>
+        <Card><StatBox label="Attention" value={events.filter(e=>e.rag==="amber").length} rag="amber"/></Card>
+        <Card><StatBox label="Complete" value={events.filter(e=>e.rag==="green").length} rag="green"/></Card>
       </Grid>
       <div style={{fontWeight:700,fontSize:14,margin:"16px 0 10px"}}>Select area</div>
       <Grid cols={2} gap={10}>
@@ -850,7 +1045,10 @@ function OwnerProp({user,propId,setView}) {
           <Card key={a.id} onClick={()=>setView({page:"o_area",propId,areaId:a.id})}>
             <div style={{display:"flex",justifyContent:"space-between"}}><span style={{fontSize:22}}>{a.icon}</span><RagBadge rag={a.rag}/></div>
             <div style={{fontWeight:600,fontSize:14,marginTop:8}}>{a.name}</div>
-            <div style={{fontSize:11,color:C.mid,marginTop:4}}>{findings.filter(f=>f.area_id===a.id).length} findings</div>
+            <div style={{fontSize:11,color:C.mid,marginTop:4}}>
+              {events.filter(e=>e.area_id===a.id&&e.rag==="red").length} urgent ·{" "}
+              {events.filter(e=>e.area_id===a.id&&e.rag==="green").length} complete
+            </div>
           </Card>
         ))}
       </Grid>
@@ -862,21 +1060,19 @@ function OwnerArea({user,propId,areaId,setView}) {
   const [prop,setProp]=useState(null);
   const [area,setArea]=useState(null);
   const [rooms,setRooms]=useState([]);
-  const [findings,setFindings]=useState([]);
-  const [visits,setVisits]=useState([]);
+  const [events,setEvents]=useState([]);
   const [states,setStates]=useState({});
-  const [exp,setExp]=useState(false);
   const [loading,setLoading]=useState(true);
 
   useEffect(()=>{
-    Promise.all([db.getProperties([propId]),db.getAreas(propId),db.getRooms(propId,areaId),db.getFindings({propId,areaId}),db.getVisits(propId)]).then(([ps,areas,r,f,v])=>{
-      setProp(ps[0]); setArea(areas.find(a=>a.id===areaId)); setRooms(r); setFindings(f); setVisits(v); setLoading(false);
+    Promise.all([db.getProperties([propId]),db.getAreas(propId),db.getRooms(propId,areaId),db.getEvents({propId,areaId})]).then(([ps,areas,r,e])=>{
+      setProp(ps[0]);setArea(areas.find(a=>a.id===areaId));setRooms(r);setEvents(e);setLoading(false);
     });
   },[propId,areaId]);
 
   const act=async(id,val)=>{
     setStates(prev=>({...prev,[id]:val}));
-    await db.updateFinding(id,{status:val==="quote"?"pending_quote":"acknowledged"});
+    await db.updateEvent(id,{quote_status:val==="quote"?"requested":"none"});
   };
 
   if(loading) return <Spinner/>;
@@ -887,56 +1083,49 @@ function OwnerArea({user,propId,areaId,setView}) {
       {rooms.length>0&&(
         <><div style={{fontWeight:700,fontSize:14,marginBottom:10}}>Rooms</div>
         <Grid cols={2} gap={8}>
-          {rooms.map(r=><Card key={r.id} onClick={()=>setView({page:"o_room",propId,areaId,roomId:r.id})}>
-            <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{fontWeight:700,fontSize:14}}>{r.name}</span><RagBadge rag={r.rag}/></div>
-            <div style={{fontSize:11,color:C.mid}}>{r.sub_name}</div>
-          </Card>)}
+          {rooms.map(r=>(
+            <Card key={r.id} onClick={()=>setView({page:"o_room",propId,areaId,roomId:r.id})}>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{fontWeight:700,fontSize:14}}>{r.name}</span><RagBadge rag={r.rag}/></div>
+              <div style={{fontSize:11,color:C.mid}}>{r.sub_name}</div>
+            </Card>
+          ))}
         </Grid><div style={{height:14}}/></>
       )}
-      <Grid cols={1} gap={12}>
-        <Card>
-          <div style={{display:"flex",justifyContent:"space-between",marginBottom:12}}>
-            <div style={{fontWeight:700,fontSize:14}}>Findings</div>
-            <Btn variant="secondary" small onClick={()=>setExp(!exp)}>Export ↓</Btn>
-          </div>
-          {exp&&<div style={{marginBottom:12,padding:12,background:C.bg,borderRadius:8}}>
-            <div style={{fontSize:12,fontWeight:600,marginBottom:8}}>Export as Excel</div>
-            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-              {["By visit date","By finding type","By service type","By RAG status"].map(o=><Btn key={o} variant="ghost" small onClick={()=>setExp(false)}>{o}</Btn>)}
+      <Card>
+        <div style={{fontWeight:700,fontSize:14,marginBottom:14}}>Event log — {area.name}</div>
+        {events.length?events.map(e=>{
+          const s=states[e.id];
+          const alreadyActed=e.quote_status!=="none";
+          return <div key={e.id} style={{padding:"12px 0",borderBottom:"1px solid "+C.line}}>
+            <div style={{display:"flex",gap:8,marginBottom:6,flexWrap:"wrap",alignItems:"center"}}>
+              <RagBadge rag={e.rag}/><TypeBadge type={e.tasks?.type}/>
+              <span style={{fontSize:11,fontWeight:700,color:C.teal}}>{e.tasks?.ref}</span>
+              <span style={{marginLeft:"auto",fontSize:11,color:C.mid}}>{e.completed_at?.slice(0,10)}</span>
             </div>
-          </div>}
-          {findings.map(f=>{
-            const s=states[f.id];
-            return <div key={f.id} style={{padding:"10px 0",borderBottom:"1px solid "+C.line}}>
-              <div style={{display:"flex",gap:8,marginBottom:6,flexWrap:"wrap"}}><RagBadge rag={f.rag}/><TypeBadge type={f.type}/></div>
-              <div style={{fontSize:13,marginBottom:8}}>{f.title}</div>
-              {!s?<div style={{display:"flex",gap:8}}>
-                <Btn small variant="ghost" onClick={()=>act(f.id,"ack")}>Noted — keep as is</Btn>
-                <Btn small variant="secondary" onClick={()=>act(f.id,"quote")}>Request quote</Btn>
-              </div>:<div style={{padding:"6px 10px",borderRadius:6,background:s==="quote"?C.amberL:C.greenL,color:s==="quote"?C.amber:C.green,fontSize:12,fontWeight:600}}>
-                {s==="quote"?"✓ Quote requested — PMS Malta will respond":"✓ Acknowledged"}
-              </div>}
-            </div>;
-          })}
-          {findings.length===0&&<div style={{fontSize:13,color:C.mid}}>No findings in this area.</div>}
-        </Card>
-        <Card>
-          <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>Audit trail</div>
-          {visits.map(v=>(
-            <div key={v.id} style={{padding:"9px 0",borderBottom:"1px solid "+C.line}}>
-              <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{fontSize:13,fontWeight:600}}>{v.date}</span><span style={{fontSize:11,color:C.mid}}>{v.tech_name}</span></div>
-              <div style={{display:"flex",gap:2,marginBottom:3}}>
-                {Array(v.green_count||0).fill(0).map((_,i)=><span key={i} style={{width:7,height:7,borderRadius:"50%",background:C.green,display:"inline-block"}}/>)}
-                {Array(v.amber_count||0).fill(0).map((_,i)=><span key={i} style={{width:7,height:7,borderRadius:"50%",background:C.amber,display:"inline-block"}}/>)}
-                {Array(v.red_count||0).fill(0).map((_,i)=><span key={i} style={{width:7,height:7,borderRadius:"50%",background:C.red,display:"inline-block"}}/>)}
+            <div style={{fontSize:14,fontWeight:600,marginBottom:4}}>{e.title}</div>
+            {e.notes&&<div style={{fontSize:13,color:C.mid,marginBottom:6}}>{e.notes}</div>}
+            {e.photo_urls&&e.photo_urls.length>0&&(
+              <div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap"}}>
+                {e.photo_urls.map((url,i)=><img key={i} src={url} style={{width:72,height:72,objectFit:"cover",borderRadius:8,border:"1px solid "+C.line}}/>)}
               </div>
-              <div style={{fontSize:11,color:C.mid}}>{v.green_count||0} good · {v.amber_count||0} amber · {v.red_count||0} urgent</div>
-            </div>
-          ))}
-          {visits.length===0&&<div style={{fontSize:13,color:C.mid}}>No visits yet.</div>}
-          <div style={{marginTop:12}}><Btn variant="secondary" small>Export Excel ↓</Btn></div>
-        </Card>
-      </Grid>
+            )}
+            {e.rag==="green"?(
+              <StatusBadge status="complete"/>
+            ):alreadyActed?(
+              <StatusBadge status={e.quote_status}/>
+            ):!s?(
+              <div style={{display:"flex",gap:8}}>
+                <Btn small variant="ghost" onClick={()=>act(e.id,"ack")}>Noted — no action</Btn>
+                <Btn small variant="secondary" onClick={()=>act(e.id,"quote")}>Request quote</Btn>
+              </div>
+            ):(
+              <div style={{padding:"6px 12px",borderRadius:6,background:s==="quote"?C.amberL:C.greenL,color:s==="quote"?C.amber:C.green,fontSize:12,fontWeight:600}}>
+                {s==="quote"?"✓ Quote requested — PMS Malta will respond":"✓ Noted"}
+              </div>
+            )}
+          </div>;
+        }):<div style={{fontSize:13,color:C.mid}}>No events yet. Events are created during tech visits.</div>}
+      </Card>
     </div>
   );
 }
@@ -945,21 +1134,19 @@ function OwnerRoom({user,propId,areaId,roomId,setView}) {
   const [prop,setProp]=useState(null);
   const [area,setArea]=useState(null);
   const [room,setRoom]=useState(null);
-  const [findings,setFindings]=useState([]);
-  const [visits,setVisits]=useState([]);
+  const [events,setEvents]=useState([]);
   const [states,setStates]=useState({});
   const [loading,setLoading]=useState(true);
 
   useEffect(()=>{
-    Promise.all([db.getProperties([propId]),db.getAreas(propId),db.getRooms(propId,areaId),db.getFindings({propId,roomId}),db.getVisits(propId)]).then(([ps,areas,rooms,f,v])=>{
-      setProp(ps[0]); setArea(areas.find(a=>a.id===areaId)); setRoom(rooms.find(r=>r.id===roomId));
-      setFindings(f); setVisits(v); setLoading(false);
+    Promise.all([db.getProperties([propId]),db.getAreas(propId),db.getRooms(propId,areaId),db.getEvents({propId,roomId})]).then(([ps,areas,rooms,e])=>{
+      setProp(ps[0]);setArea(areas.find(a=>a.id===areaId));setRoom(rooms.find(r=>r.id===roomId));setEvents(e);setLoading(false);
     });
   },[propId,areaId,roomId]);
 
   const act=async(id,val)=>{
     setStates(prev=>({...prev,[id]:val}));
-    await db.updateFinding(id,{status:val==="quote"?"pending_quote":"acknowledged"});
+    await db.updateEvent(id,{quote_status:val==="quote"?"requested":"none"});
   };
 
   if(loading) return <Spinner/>;
@@ -967,42 +1154,41 @@ function OwnerRoom({user,propId,areaId,roomId,setView}) {
   return (
     <div>
       <SectionHead title={room.name} sub={room.sub_name+" · "+area.name+" · "+prop.name} action={<RagBadge rag={room.rag}/>} back={()=>setView({page:"o_area",propId,areaId})}/>
-      <Grid cols={1} gap={12}>
-        <Card>
-          <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>Findings in {room.name}</div>
-          {findings.map(f=>{
-            const s=states[f.id];
-            return <div key={f.id} style={{padding:"10px 0",borderBottom:"1px solid "+C.line}}>
-              <div style={{display:"flex",gap:8,marginBottom:6}}><RagBadge rag={f.rag}/><TypeBadge type={f.type}/></div>
-              <div style={{fontSize:13,marginBottom:8}}>{f.title}</div>
-              {!s?<div style={{display:"flex",gap:8}}>
-                <Btn small variant="ghost" onClick={()=>act(f.id,"ack")}>Noted — keep as is</Btn>
-                <Btn small variant="secondary" onClick={()=>act(f.id,"quote")}>Request quote</Btn>
-              </div>:<div style={{padding:"6px 10px",borderRadius:6,background:s==="quote"?C.amberL:C.greenL,color:s==="quote"?C.amber:C.green,fontSize:12,fontWeight:600}}>
-                {s==="quote"?"✓ Quote requested":"✓ Acknowledged"}
-              </div>}
-            </div>;
-          })}
-          {findings.length===0&&<div style={{fontSize:13,color:C.mid,padding:"12px 0"}}>No findings for this room.</div>}
-        </Card>
-        <Card>
-          <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>Room audit trail</div>
-          {visits.map(v=>(
-            <div key={v.id} style={{padding:"9px 0",borderBottom:"1px solid "+C.line}}>
-              <div style={{display:"flex",justifyContent:"space-between"}}><span style={{fontSize:13,fontWeight:600}}>{v.date}</span><StatusBadge status="complete"/></div>
-              <div style={{fontSize:11,color:C.mid,marginTop:2}}>Inspected by {v.tech_name}</div>
+      <Card>
+        <div style={{fontWeight:700,fontSize:14,marginBottom:14}}>Event history — {room.name}</div>
+        {events.length?events.map(e=>{
+          const s=states[e.id];
+          return <div key={e.id} style={{padding:"12px 0",borderBottom:"1px solid "+C.line}}>
+            <div style={{display:"flex",gap:8,marginBottom:6,flexWrap:"wrap",alignItems:"center"}}>
+              <RagBadge rag={e.rag}/><TypeBadge type={e.tasks?.type}/>
+              <span style={{fontSize:11,fontWeight:700,color:C.teal}}>{e.tasks?.ref}</span>
+              <span style={{marginLeft:"auto",fontSize:11,color:C.mid}}>{e.completed_at?.slice(0,10)}</span>
             </div>
-          ))}
-          {visits.length===0&&<div style={{fontSize:13,color:C.mid}}>No visits yet.</div>}
-          <div style={{marginTop:12}}><Btn variant="secondary" small>Export Excel ↓</Btn></div>
-        </Card>
-      </Grid>
+            <div style={{fontSize:14,fontWeight:600,marginBottom:4}}>{e.title}</div>
+            {e.notes&&<div style={{fontSize:13,color:C.mid,marginBottom:6}}>{e.notes}</div>}
+            {e.photo_urls&&e.photo_urls.length>0&&(
+              <div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap"}}>
+                {e.photo_urls.map((url,i)=><img key={i} src={url} style={{width:72,height:72,objectFit:"cover",borderRadius:8,border:"1px solid "+C.line}}/>)}
+              </div>
+            )}
+            {e.rag!=="green"&&!s&&!e.quote_status!=="none"&&(
+              <div style={{display:"flex",gap:8}}>
+                <Btn small variant="ghost" onClick={()=>act(e.id,"ack")}>Noted</Btn>
+                <Btn small variant="secondary" onClick={()=>act(e.id,"quote")}>Request quote</Btn>
+              </div>
+            )}
+            {(s||e.quote_status!=="none")&&e.rag!=="green"&&(
+              <StatusBadge status={s==="quote"||e.quote_status==="requested"?"requested":"acknowledged"}/>
+            )}
+          </div>;
+        }):<div style={{fontSize:13,color:C.mid}}>No events yet for this room.</div>}
+      </Card>
     </div>
   );
 }
 
 function OwnerPending({user}) {
-  const [findings,setFindings]=useState([]);
+  const [events,setEvents]=useState([]);
   const [props,setProps]=useState([]);
   const [areas,setAreas]=useState([]);
   const [states,setStates]=useState({});
@@ -1010,35 +1196,42 @@ function OwnerPending({user}) {
 
   useEffect(()=>{
     const ids=user.prop_ids||[];
-    Promise.all([db.getFindings({propIds:ids}),db.getProperties(ids)]).then(async([f,p])=>{
-      const pending=f.filter(x=>x.status==="pending"||x.status==="pending_quote");
-      setFindings(pending); setProps(p);
+    Promise.all([db.getEvents({propIds:ids.length?ids:undefined}),db.getProperties(ids)]).then(async([e,p])=>{
+      const pending=e.filter(x=>x.rag!=="green"&&x.quote_status==="none");
+      setEvents(pending);setProps(p);
       const allAreas=[];
       for(const prop of p){ const a=await db.getAreas(prop.id); allAreas.push(...a); }
-      setAreas(allAreas); setLoading(false);
+      setAreas(allAreas);setLoading(false);
     });
   },[user.id]);
 
   const act=async(id,val)=>{
     setStates(prev=>({...prev,[id]:val}));
-    await db.updateFinding(id,{status:val==="quote"?"pending_quote":"acknowledged"});
+    await db.updateEvent(id,{quote_status:val==="quote"?"requested":"none"});
   };
 
   if(loading) return <Spinner/>;
   return (
     <div>
-      <SectionHead title="Pending tasks" sub="All items awaiting your decision"/>
-      {findings.length===0&&<Card><div style={{textAlign:"center",padding:32,color:C.mid}}>All clear — no pending tasks.</div></Card>}
-      {findings.map(f=>{
-        const prop=props.find(p=>p.id===f.prop_id), area=areas.find(a=>a.id===f.area_id), s=states[f.id];
-        return <Card key={f.id} style={{marginBottom:10}}>
-          <div style={{display:"flex",gap:8,marginBottom:8,flexWrap:"wrap",alignItems:"center"}}><RagBadge rag={f.rag}/><TypeBadge type={f.type}/><span style={{fontSize:11,color:C.mid}}>{prop?.name} › {area?.name}</span><span style={{marginLeft:"auto",fontSize:11,color:C.mid}}>{f.date}</span></div>
-          <div style={{fontSize:14,fontWeight:600,marginBottom:10}}>{f.title}</div>
+      <SectionHead title="Pending actions" sub="Events requiring your decision"/>
+      {events.length===0&&<Card><div style={{textAlign:"center",padding:32,color:C.mid}}>All clear — no pending actions.</div></Card>}
+      {events.map(e=>{
+        const prop=props.find(p=>p.id===e.prop_id);
+        const area=areas.find(a=>a.id===e.area_id);
+        const s=states[e.id];
+        return <Card key={e.id} style={{marginBottom:10}}>
+          <div style={{display:"flex",gap:8,marginBottom:8,flexWrap:"wrap",alignItems:"center"}}>
+            <RagBadge rag={e.rag}/><TypeBadge type={e.tasks?.type}/>
+            <span style={{fontSize:11,color:C.mid}}>{prop?.name} › {area?.name}</span>
+            <span style={{marginLeft:"auto",fontSize:11,color:C.mid}}>{e.completed_at?.slice(0,10)}</span>
+          </div>
+          <div style={{fontSize:14,fontWeight:600,marginBottom:10}}>{e.title}</div>
+          {e.notes&&<div style={{fontSize:13,color:C.mid,marginBottom:10}}>{e.notes}</div>}
           {!s?<div style={{display:"flex",gap:8}}>
-            <Btn small variant="ghost" onClick={()=>act(f.id,"ack")}>Noted — keep as is</Btn>
-            <Btn small variant="secondary" onClick={()=>act(f.id,"quote")}>Request quote</Btn>
+            <Btn small variant="ghost" onClick={()=>act(e.id,"ack")}>Noted — no action</Btn>
+            <Btn small variant="secondary" onClick={()=>act(e.id,"quote")}>Request quote</Btn>
           </div>:<div style={{padding:"8px 12px",borderRadius:6,background:s==="quote"?C.amberL:C.greenL,color:s==="quote"?C.amber:C.green,fontSize:12,fontWeight:600}}>
-            {s==="quote"?"✓ Quote requested — PMS Malta will respond":"✓ Noted and acknowledged"}
+            {s==="quote"?"✓ Quote requested — PMS Malta will respond shortly":"✓ Noted"}
           </div>}
         </Card>;
       })}
@@ -1046,326 +1239,48 @@ function OwnerPending({user}) {
   );
 }
 
-function OwnerReports() {
-  return (
-    <div>
-      <SectionHead title="Monthly reports" sub="PPM reports and invoices"/>
-      {[{month:"July 2026",visits:2,done:43,amber:10,red:5,status:"pending",invoice:"€400"},{month:"June 2026",visits:2,done:44,amber:7,red:1,status:"complete",invoice:"€400"},{month:"May 2026",visits:2,done:44,amber:3,red:0,status:"complete",invoice:"€400"}].map(r=>(
-        <Card key={r.month} style={{marginBottom:12}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-            <div style={{fontSize:16,fontWeight:700}}>{r.month}</div>
-            <div style={{display:"flex",gap:8,alignItems:"center"}}><StatusBadge status={r.status}/><span style={{fontWeight:700,color:C.teal}}>{r.invoice}</span></div>
-          </div>
-          <div style={{display:"flex",gap:16,fontSize:12,color:C.mid,marginBottom:12,flexWrap:"wrap"}}>
-            <span>{r.visits} visits</span><span style={{color:C.green}}>✓ {r.done} done</span><span style={{color:C.amber}}>⚠ {r.amber} amber</span><span style={{color:C.red}}>✕ {r.red} urgent</span>
-          </div>
-          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-            <Btn variant="secondary" small>View report</Btn><Btn variant="ghost" small>Download PDF</Btn><Btn variant="ghost" small>Export Excel</Btn>
-          </div>
-        </Card>
-      ))}
-    </div>
-  );
-}
-
-
-
-// ── TASKS TAB COMPONENT ────────────────────────────────────────────────────
-function TasksTab({tasks, setTasks, notify, inp, sel}) {
-  const [tRef,setTRef]=useState("");
-  const [tName,setTName]=useState("");
-  const [tDesc,setTDesc]=useState("");
-  const [tType,setTType]=useState("misc");
-  const [tFreq,setTFreq]=useState("Monthly");
-  const [tGrade,setTGrade]=useState("General");
-  const [tPhoto,setTPhoto]=useState(false);
-  const [tApplies,setTApplies]=useState("room");
-  const [adding,setAdding]=useState(false);
-  const [showForm,setShowForm]=useState(false);
-
-  const addTask = async () => {
-    if(!tRef||!tName){notify("Reference and task name are required.");return;}
-    setAdding(true);
-    try {
-      await db.addTask(tRef,tName,tDesc,tType,tFreq,tGrade,tPhoto,tApplies);
-      setTRef(""); setTName(""); setTDesc(""); setTPhoto(false); setShowForm(false);
-      const updated = await db.getTasks();
-      setTasks(updated);
-      const assignedMsg = (tApplies==="room"||tApplies==="both") ? " and auto-assigned to all existing rooms" : "";
-      notify("Task added"+assignedMsg+" ✓");
-    } catch(e) { notify("Error: "+e.message); }
-    setAdding(false);
-  };
-
-  const toggleTask = async (id, current) => {
-    await db.toggleTask(id, !current);
-    setTasks(prev => prev.map(t => t.id===id ? {...t, active:!current} : t));
-  };
-
-  const typeOpts = [{v:"misc",l:"General"},{v:"elec",l:"Electrical"},{v:"hydro",l:"Water / Legionella"},{v:"hvac",l:"HVAC"}];
-  const freqOpts = [{v:"Monthly",l:"Monthly"},{v:"Quarterly",l:"Quarterly"},{v:"Every 6 months",l:"Every 6 months"},{v:"Annual",l:"Annual"},{v:"One-off",l:"One-off"}];
-  const gradeOpts = [{v:"General",l:"General hand"},{v:"Licensed",l:"Licensed engineer"}];
-  const appOpts = [{v:"room",l:"Room tasks (auto-assigned to all rooms)"},{v:"area",l:"Area tasks (specific area only)"},{v:"both",l:"Both rooms and areas"}];
-
-  return (
-    <div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-        <div style={{fontWeight:700,fontSize:15}}>Task library ({tasks.length} tasks)</div>
-        <Btn variant={showForm?"ghost":"primary"} small onClick={()=>setShowForm(!showForm)}>
-          {showForm?"Cancel":"+ New task"}
-        </Btn>
-      </div>
-
-      {showForm&&<Card style={{marginBottom:16,borderLeft:"4px solid "+C.teal}}>
-        <div style={{fontWeight:700,fontSize:14,marginBottom:14,color:C.teal}}>Add new task</div>
-
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
-          <div>
-            <label style={{fontSize:11,fontWeight:600,color:C.slate,display:"block",marginBottom:4}}>Reference code</label>
-            <input value={tRef} onChange={e=>setTRef(e.target.value)} placeholder="e.g. W-04"
-              style={{width:"100%",padding:"8px 12px",borderRadius:7,border:"1px solid "+C.line,fontSize:13,outline:"none"}}/>
-          </div>
-          <div>
-            <label style={{fontSize:11,fontWeight:600,color:C.slate,display:"block",marginBottom:4}}>Type</label>
-            <select value={tType} onChange={e=>setTType(e.target.value)}
-              style={{width:"100%",padding:"8px 12px",borderRadius:7,border:"1px solid "+C.line,fontSize:13,outline:"none",background:"white"}}>
-              {typeOpts.map(o=><option key={o.v} value={o.v}>{o.l}</option>)}
-            </select>
-          </div>
-        </div>
-
-        <div style={{marginBottom:8}}>
-          <label style={{fontSize:11,fontWeight:600,color:C.slate,display:"block",marginBottom:4}}>Task name</label>
-          <input value={tName} onChange={e=>setTName(e.target.value)} placeholder="e.g. Biocide dosing check"
-            style={{width:"100%",padding:"8px 12px",borderRadius:7,border:"1px solid "+C.line,fontSize:13,outline:"none"}}/>
-        </div>
-
-        <div style={{marginBottom:8}}>
-          <label style={{fontSize:11,fontWeight:600,color:C.slate,display:"block",marginBottom:4}}>Description (shown to tech)</label>
-          <textarea value={tDesc} onChange={e=>setTDesc(e.target.value)} placeholder="Brief instruction for the technician…" rows={2}
-            style={{width:"100%",padding:"8px 12px",borderRadius:7,border:"1px solid "+C.line,fontSize:13,outline:"none",resize:"vertical",fontFamily:"inherit"}}/>
-        </div>
-
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
-          <div>
-            <label style={{fontSize:11,fontWeight:600,color:C.slate,display:"block",marginBottom:4}}>Frequency</label>
-            <select value={tFreq} onChange={e=>setTFreq(e.target.value)}
-              style={{width:"100%",padding:"8px 12px",borderRadius:7,border:"1px solid "+C.line,fontSize:13,outline:"none",background:"white"}}>
-              {freqOpts.map(o=><option key={o.v} value={o.v}>{o.l}</option>)}
-            </select>
-          </div>
-          <div>
-            <label style={{fontSize:11,fontWeight:600,color:C.slate,display:"block",marginBottom:4}}>Engineer grade</label>
-            <select value={tGrade} onChange={e=>setTGrade(e.target.value)}
-              style={{width:"100%",padding:"8px 12px",borderRadius:7,border:"1px solid "+C.line,fontSize:13,outline:"none",background:"white"}}>
-              {gradeOpts.map(o=><option key={o.v} value={o.v}>{o.l}</option>)}
-            </select>
-          </div>
-        </div>
-
-        <div style={{marginBottom:8}}>
-          <label style={{fontSize:11,fontWeight:600,color:C.slate,display:"block",marginBottom:4}}>Applies to</label>
-          <select value={tApplies} onChange={e=>setTApplies(e.target.value)}
-            style={{width:"100%",padding:"8px 12px",borderRadius:7,border:"1px solid "+C.line,fontSize:13,outline:"none",background:"white"}}>
-            {appOpts.map(o=><option key={o.v} value={o.v}>{o.l}</option>)}
-          </select>
-        </div>
-
-        <label style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer",marginBottom:16,fontSize:13}}>
-          <input type="checkbox" checked={tPhoto} onChange={e=>setTPhoto(e.target.checked)}
-            style={{width:16,height:16,cursor:"pointer"}}/>
-          <span>Photo required from technician</span>
-        </label>
-
-        {(tApplies==="room"||tApplies==="both")&&<div style={{marginBottom:14,padding:"8px 12px",background:C.tealL,borderRadius:6,fontSize:12,color:C.teal}}>
-          ✓ This task will be auto-assigned to all {tasks.length>0?"existing and ":""}new rooms
-        </div>}
-
-        <Btn onClick={addTask} disabled={adding}>
-          {adding?"Adding…":"Add task"}
-        </Btn>
-      </Card>}
-
-      {tasks.map(t=>(
-        <Card key={t.id} style={{marginBottom:8,opacity:t.active?1:0.5}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
-            <div style={{display:"flex",gap:8,alignItems:"center",flex:1}}>
-              <span style={{fontSize:11,fontWeight:700,color:C.teal,minWidth:36}}>{t.ref}</span>
-              <span style={{fontSize:14,fontWeight:600,flex:1}}>{t.name}</span>
-            </div>
-            <div style={{display:"flex",gap:6,alignItems:"center"}}>
-              <TypeBadge type={t.type}/>
-              <button onClick={()=>toggleTask(t.id,t.active)} style={{padding:"3px 10px",borderRadius:20,border:"1px solid "+C.line,background:t.active?C.greenL:"#F1F5F9",color:t.active?C.green:C.mid,fontSize:11,fontWeight:600,cursor:"pointer"}}>
-                {t.active?"Active":"Inactive"}
-              </button>
-            </div>
-          </div>
-          <div style={{fontSize:12,color:C.mid,marginBottom:6}}>{t.description}</div>
-          <div style={{display:"flex",gap:12,fontSize:11,color:C.mid,flexWrap:"wrap"}}>
-            <span>Frequency: <b style={{color:C.teal}}>{t.frequency}</b></span>
-            <span>Grade: <b style={{color:t.grade==="Licensed"?C.amber:C.mid}}>{t.grade}</b></span>
-            <span>Photo: <b style={{color:t.photo_required?C.teal:C.mid}}>{t.photo_required?"Required":"Optional"}</b></span>
-            <span>Applies to: <b style={{color:C.slate}}>{t.applies_to||"room"}</b></span>
-          </div>
-        </Card>
-      ))}
-    </div>
-  );
-}
-
-// ── ADMIN MANAGE ───────────────────────────────────────────────────────────
-function AdminManage({setView}) {
-  const [tab,setTab]=useState("properties");
-  const [props,setProps]=useState([]);
-  const [users,setUsers]=useState([]);
-  const [tasks,setTasks]=useState([]);
+function OwnerReports({user}) {
+  const [events,setEvents]=useState([]);
   const [loading,setLoading]=useState(true);
-  const [msg,setMsg]=useState("");
-
-  // Add property form
-  const [pName,setPName]=useState(""); const [pAddr,setPAddr]=useState(""); const [pType,setPType]=useState("Boutique Hotel");
-  // Add room form  
-  const [rProp,setRProp]=useState(""); const [rArea,setRArea]=useState(""); const [rName,setRName]=useState(""); const [rSub,setRSub]=useState("");
-  const [areas,setAreas]=useState([]);
-  // Add user form
-  const [uName,setUName]=useState(""); const [uRole,setURole]=useState("tech"); const [uEmail,setUEmail]=useState(""); const [uPass,setUPass]=useState("");
-
   useEffect(()=>{
-    Promise.all([db.getProperties(),db.getUsers(),db.getTasks()]).then(([p,u,t])=>{
-      setProps(p); setUsers(u); setTasks(t); setLoading(false);
-    });
-  },[]);
-
-  useEffect(()=>{
-    if(rProp) db.getAreas(rProp).then(setAreas);
-  },[rProp]);
-
-  const notify=(m)=>{setMsg(m); setTimeout(()=>setMsg(""),3000);};
-
-  const addProp=async()=>{
-    if(!pName||!pAddr){notify("Name and address are required.");return;}
-    await db.addProperty(pName,pAddr,pType,"u2");
-    setPName(""); setPAddr("");
-    db.getProperties().then(setProps);
-    notify("Property added ✓");
-  };
-
-  const addRoom=async()=>{
-    if(!rProp||!rArea||!rName){notify("Property, area and room name are required.");return;}
-    await db.addRoom(rProp,rArea,rName,rSub);
-    setRName(""); setRSub("");
-    notify("Room added with "+tasks.length+" tasks auto-assigned ✓");
-  };
-
-  const addUser=async()=>{
-    if(!uName||!uEmail||!uPass){notify("Name, email and password are required.");return;}
-    try{
-      await db.addUser(uName,uRole,uEmail,uPass,[]);
-      setUName(""); setUEmail(""); setUPass("");
-      db.getUsers().then(setUsers);
-      notify("User added ✓");
-    } catch(e){ notify("Error: "+e.message); }
-  };
+    const ids=user.prop_ids||[];
+    db.getEvents({propIds:ids.length?ids:undefined}).then(e=>{setEvents(e);setLoading(false);});
+  },[user.id]);
 
   if(loading) return <Spinner/>;
-
-  const inp=(val,set,ph,type="text")=>(
-    <input value={val} onChange={e=>set(e.target.value)} placeholder={ph} type={type}
-      style={{width:"100%",padding:"8px 12px",borderRadius:7,border:"1px solid "+C.line,fontSize:13,outline:"none",marginBottom:8}}/>
-  );
-  const sel=(val,set,opts)=>(
-    <select value={val} onChange={e=>set(e.target.value)}
-      style={{width:"100%",padding:"8px 12px",borderRadius:7,border:"1px solid "+C.line,fontSize:13,outline:"none",marginBottom:8,background:C.white}}>
-      {opts.map(o=><option key={o.v} value={o.v}>{o.l}</option>)}
-    </select>
-  );
+  const months=[...new Set(events.map(e=>e.month_label).filter(Boolean))];
 
   return (
     <div>
-      <SectionHead title="Manage" sub="Add and edit properties, rooms and users"/>
-      {msg&&<div style={{marginBottom:14,padding:"10px 14px",background:C.greenL,color:C.green,borderRadius:8,fontSize:13,fontWeight:600}}>{msg}</div>}
-
-      {/* Tabs */}
-      <div style={{display:"flex",gap:6,marginBottom:20,flexWrap:"wrap"}}>
-        {[["properties","Properties"],["rooms","Add room"],["users","Users"],["tasks","Tasks"]].map(([id,l])=>(
-          <button key={id} onClick={()=>setTab(id)} style={{padding:"7px 16px",borderRadius:20,border:"1.5px solid "+(tab===id?C.teal:C.line),background:tab===id?C.teal:C.white,color:tab===id?C.white:C.mid,fontSize:13,fontWeight:600,cursor:"pointer"}}>{l}</button>
-        ))}
-      </div>
-
-      {/* PROPERTIES TAB */}
-      {tab==="properties"&&<div>
-        <Card style={{marginBottom:16}}>
-          <div style={{fontWeight:700,fontSize:14,marginBottom:14}}>Add new property</div>
-          {inp(pName,setPName,"Property name e.g. 66 Saint Paul's Malta")}
-          {inp(pAddr,setPAddr,"Address")}
-          {sel(pType,setPType,[{v:"Boutique Hotel",l:"Boutique Hotel"},{v:"Boutique Hostel",l:"Boutique Hostel"},{v:"Apartment Block",l:"Apartment Block"},{v:"Commercial",l:"Commercial"}])}
-          <Btn onClick={addProp}>Add property</Btn>
-        </Card>
-        <Card>
-          <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>Existing properties</div>
-          {props.map(p=>(
-            <div key={p.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:"1px solid "+C.line}}>
-              <div><div style={{fontSize:13,fontWeight:600}}>{p.name}</div><div style={{fontSize:11,color:C.mid}}>{p.type} · {p.address}</div></div>
-              <RagBadge rag={p.rag}/>
-            </div>
-          ))}
-        </Card>
-      </div>}
-
-      {/* ROOMS TAB */}
-      {tab==="rooms"&&<div>
-        <Card style={{marginBottom:16}}>
-          <div style={{fontWeight:700,fontSize:14,marginBottom:6}}>Add new room</div>
-          <div style={{fontSize:12,color:C.teal,marginBottom:14,padding:"8px 12px",background:C.tealL,borderRadius:6}}>
-            ✓ All {tasks.length} standard tasks will be auto-assigned to this room when added
+      <SectionHead title="Reports" sub="Monthly PPM event reports"/>
+      {months.length===0&&<Card><div style={{textAlign:"center",padding:32,color:C.mid}}>No reports yet. Reports are generated after tech visits.</div></Card>}
+      {months.map(m=>{
+        const mEvents=events.filter(e=>e.month_label===m);
+        const charged=mEvents.filter(e=>e.chargeable&&e.charge_amount>0).reduce((sum,e)=>sum+Number(e.charge_amount),0);
+        return <Card key={m} style={{marginBottom:14}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+            <div style={{fontSize:16,fontWeight:700}}>{m}</div>
+            <span style={{fontWeight:700,color:C.teal}}>{charged>0?"€"+charged+" chargeable":""}</span>
           </div>
-          {sel(rProp,setRProp,[{v:"",l:"Select property…"},...props.map(p=>({v:p.id,l:p.name}))])}
-          {sel(rArea,setRArea,[{v:"",l:"Select area…"},...areas.map(a=>({v:a.id,l:a.name}))])}
-          {inp(rName,setRName,"Room name e.g. Room 207")}
-          {inp(rSub,setRSub,"Room type e.g. Deluxe (optional)")}
-          <Btn onClick={addRoom}>Add room + auto-assign tasks</Btn>
-        </Card>
-        <div style={{fontSize:12,color:C.mid,padding:"8px 0"}}>Auto-assigned tasks when adding a room:</div>
-        {tasks.map(t=>(
-          <div key={t.id} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 0",borderBottom:"1px solid "+C.line,fontSize:12}}>
-            <span style={{fontWeight:700,color:C.teal,minWidth:36}}>{t.ref}</span>
-            <span style={{flex:1}}>{t.name}</span>
-            <span style={{color:C.mid}}>{t.frequency}</span>
-            <TypeBadge type={t.type}/>
+          <div style={{display:"flex",gap:16,fontSize:12,color:C.mid,marginBottom:12,flexWrap:"wrap"}}>
+            <span>{mEvents.length} events</span>
+            <span style={{color:C.green}}>✓ {mEvents.filter(e=>e.rag==="green").length} complete</span>
+            <span style={{color:C.amber}}>⚠ {mEvents.filter(e=>e.rag==="amber").length} amber</span>
+            <span style={{color:C.red}}>✕ {mEvents.filter(e=>e.rag==="red").length} urgent</span>
           </div>
-        ))}
-      </div>}
-
-      {/* USERS TAB */}
-      {tab==="users"&&<div>
-        <Card style={{marginBottom:16}}>
-          <div style={{fontWeight:700,fontSize:14,marginBottom:14}}>Add new user</div>
-          {inp(uName,setUName,"Full name")}
-          {sel(uRole,setURole,[{v:"tech",l:"Tech / Engineer"},{v:"owner",l:"Owner"},{v:"admin",l:"Admin"}])}
-          {inp(uEmail,setUEmail,"Email address","email")}
-          {inp(uPass,setUPass,"Password","password")}
-          <Btn onClick={addUser}>Add user</Btn>
-        </Card>
-        <Card>
-          <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>All users</div>
-          {users.map(u=>(
-            <div key={u.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:"1px solid "+C.line}}>
-              <div><div style={{fontSize:13,fontWeight:600}}>{u.name}</div><div style={{fontSize:11,color:C.mid}}>{u.email}</div></div>
-              <span style={{padding:"2px 10px",borderRadius:20,background:{admin:C.tealL,tech:"#EEF2FF",owner:C.amberL}[u.role]||C.bg,color:{admin:C.teal,tech:"#6366F1",owner:C.amber}[u.role]||C.mid,fontSize:11,fontWeight:600}}>{u.role}</span>
-            </div>
-          ))}
-        </Card>
-      </div>}
-
-      {/* TASKS TAB */}
-      {tab==="tasks"&&<TasksTab tasks={tasks} setTasks={setTasks} notify={notify} inp={inp} sel={sel}/>}
+          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+            <Btn variant="secondary" small>View events</Btn>
+            <Btn variant="ghost" small>Export Excel</Btn>
+          </div>
+        </Card>;
+      })}
     </div>
   );
 }
 
 // ── NAV ────────────────────────────────────────────────────────────────────
-const NAVS = {
-  admin:[{id:"a_dash",l:"Dashboard",i:"⊞"},{id:"a_cal",l:"Calendar",i:"📅"},{id:"a_tasks",l:"Tasks",i:"✓"},{id:"a_find",l:"Findings",i:"⚑"},{id:"a_manage",l:"Manage",i:"⚙️"}],
+const NAVS={
+  admin:[{id:"a_dash",l:"Dashboard",i:"⊞"},{id:"a_cal",l:"Calendar",i:"📅"},{id:"a_events",l:"Events",i:"⚑"},{id:"a_manage",l:"Manage",i:"⚙️"}],
   tech: [{id:"t_dash",l:"My visits",i:"📋"}],
   owner:[{id:"o_dash",l:"Properties",i:"🏨"},{id:"o_pend",l:"Pending",i:"⚑"},{id:"o_rep",l:"Reports",i:"📊"}],
 };
@@ -1377,7 +1292,7 @@ function App() {
   const [view,setView]=useState({page:"a_dash"});
   const [menu,setMenu]=useState(false);
 
-  const login=(u)=>{setUser(u);const d={admin:"a_dash",tech:"t_dash",owner:"o_dash"};setView({page:d[u.role]});};
+  const login=u=>{setUser(u);const d={admin:"a_dash",tech:"t_dash",owner:"o_dash"};setView({page:d[u.role]});};
   const logout=()=>{setUser(null);setView({page:"a_dash"});};
 
   if(!user) return <Login onLogin={login}/>;
@@ -1385,9 +1300,8 @@ function App() {
   const nav=NAVS[user.role]||[];
   const pc=PCOL[user.role];
 
-  const isActive=(nid)=>{
+  const isActive=nid=>{
     if(nid==="a_dash"&&(view.page.startsWith("a_prop")||view.page.startsWith("a_area")||view.page.startsWith("a_room"))) return true;
-    if(nid==="a_manage"&&view.page==="a_manage") return true;
     if(nid==="o_dash"&&(view.page.startsWith("o_prop")||view.page.startsWith("o_area")||view.page.startsWith("o_room"))) return true;
     if(nid==="t_dash"&&view.page.startsWith("t_")) return true;
     return view.page===nid;
@@ -1395,24 +1309,21 @@ function App() {
 
   const content=()=>{
     switch(view.page){
-      case "a_dash": return <AdminDash setView={setView}/>;
-      case "a_prop": return <AdminProp propId={view.propId} setView={setView}/>;
-      case "a_area": return <AdminArea propId={view.propId} areaId={view.areaId} setView={setView}/>;
-      case "a_room": return <AdminRoom propId={view.propId} areaId={view.areaId} roomId={view.roomId} setView={setView}/>;
-      case "a_cal":  return <AdminCal setView={setView}/>;
-      case "a_tasks":return <AdminTasks/>;
-      case "a_find": return <AdminFindings/>;
-      case "t_dash": return <TechDash user={user} setView={setView}/>;
-      case "t_cat":  return <TechCat {...view} setView={setView}/>;
-      case "t_area": return <TechArea {...view} setView={setView}/>;
-      case "t_check":return <TechCheck {...view} setView={setView}/>;
-      case "o_dash": return <OwnerDash user={user} setView={setView}/>;
-      case "o_prop": return <OwnerProp user={user} propId={view.propId} setView={setView}/>;
-      case "o_area": return <OwnerArea user={user} propId={view.propId} areaId={view.areaId} setView={setView}/>;
-      case "o_room": return <OwnerRoom user={user} propId={view.propId} areaId={view.areaId} roomId={view.roomId} setView={setView}/>;
-      case "o_pend": return <OwnerPending user={user}/>;
-      case "o_rep":  return <OwnerReports/>;
-      case "a_manage": return <AdminManage setView={setView}/>;
+      case "a_dash":   return <AdminDash setView={setView}/>;
+      case "a_prop":   return <AdminProp propId={view.propId} setView={setView}/>;
+      case "a_area":   return <AdminArea propId={view.propId} areaId={view.areaId} setView={setView}/>;
+      case "a_room":   return <AdminRoom propId={view.propId} areaId={view.areaId} roomId={view.roomId} setView={setView}/>;
+      case "a_cal":    return <AdminCal setView={setView}/>;
+      case "a_events": return <AdminEvents/>;
+      case "a_manage": return <AdminManage/>;
+      case "t_dash":   return <TechDash user={user} setView={setView}/>;
+      case "t_visit":  return <TechVisit date={view.date} tasks={view.tasks} user={user} setView={setView}/>;
+      case "o_dash":   return <OwnerDash user={user} setView={setView}/>;
+      case "o_prop":   return <OwnerProp user={user} propId={view.propId} setView={setView}/>;
+      case "o_area":   return <OwnerArea user={user} propId={view.propId} areaId={view.areaId} setView={setView}/>;
+      case "o_room":   return <OwnerRoom user={user} propId={view.propId} areaId={view.areaId} roomId={view.roomId} setView={setView}/>;
+      case "o_pend":   return <OwnerPending user={user}/>;
+      case "o_rep":    return <OwnerReports user={user}/>;
       default: return null;
     }
   };
@@ -1445,9 +1356,7 @@ function App() {
         <div style={{flex:1,background:"rgba(0,0,0,0.4)"}} onClick={()=>setMenu(false)}/>
       </div>}
 
-      <div style={{flex:1,padding:16,overflowY:"auto"}}>
-        {content()}
-      </div>
+      <div style={{flex:1,padding:16,overflowY:"auto"}}>{content()}</div>
 
       <div style={{background:C.nav,display:"flex",borderTop:"1px solid rgba(255,255,255,0.1)",position:"sticky",bottom:0}}>
         {nav.map(n=>{
