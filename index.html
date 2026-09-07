@@ -325,101 +325,53 @@ function(a,b,c){if(!Vd(b))throw Error(n(200));return Wd(null,a,b,!1,c)};Q.unmoun
 })();
 </script>
 <script>
-// Minimal Supabase client - direct REST API
 (function(global){
-  function createClient(url, key) {
-    const headers = {
-      'apikey': key,
-      'Authorization': 'Bearer ' + key,
-      'Content-Type': 'application/json',
-      'Prefer': 'return=representation'
-    };
-    
-    function rest(path) {
-      return {
-        _url: url + '/rest/v1/' + path,
-        _filters: [],
-        _select: '*',
-        _order: null,
-        _limit: null,
-        _single: false,
-        
-        select(cols) { this._select = cols; return this; },
-        eq(col, val) { this._filters.push(col + '=eq.' + encodeURIComponent(val)); return this; },
-        in(col, vals) { this._filters.push(col + '=in.(' + vals.join(',') + ')'); return this; },
-        is(col, val) { this._filters.push(col + '=is.' + (val === null ? 'null' : val)); return this; },
-        order(col, opts) { this._order = col + (opts && opts.ascending===false ? '.desc' : '.asc'); return this; },
-        limit(n) { this._limit = n; return this; },
-        single() { this._single = true; return this; },
-        
-        async _build(method, body) {
-          let u = this._url + '?select=' + encodeURIComponent(this._select);
-          this._filters.forEach(f => u += '&' + f);
-          if (this._order) u += '&order=' + this._order;
-          if (this._limit) u += '&limit=' + this._limit;
-          if (this._single) u += '&limit=1';
-          const h = Object.assign({}, headers);
-          if (this._single) h['Accept'] = 'application/vnd.pgrst.object+json';
-          const opts = { method: method || 'GET', headers: h };
-          if (body) opts.body = JSON.stringify(body);
-          try {
-            const res = await fetch(u, opts);
-            if (!res.ok) {
-              const err = await res.json().catch(()=>({}));
-              return { data: null, error: err };
-            }
-            const data = res.status === 204 ? null : await res.json();
-            return { data, error: null };
-          } catch(e) {
-            return { data: null, error: { message: e.message } };
-          }
+  function createClient(url,key){
+    const H={'apikey':key,'Authorization':'Bearer '+key,'Content-Type':'application/json','Prefer':'return=representation'};
+    function rest(table){
+      return{_t:table,_f:[],_s:'*',_o:null,_lim:null,_single:false,
+        select(c){this._s=c;return this;},
+        eq(c,v){this._f.push(c+'=eq.'+encodeURIComponent(v));return this;},
+        in(c,v){this._f.push(c+'=in.('+v.join(',')+')');return this;},
+        is(c,v){this._f.push(c+'=is.'+(v===null?'null':v));return this;},
+        order(c,o){this._o=c+(o&&o.ascending===false?'.desc':'.asc');return this;},
+        limit(n){this._lim=n;return this;},
+        single(){this._single=true;return this;},
+        async _go(method,body){
+          let u=url+'/rest/v1/'+this._t+'?select='+encodeURIComponent(this._s);
+          this._f.forEach(f=>u+='&'+f);
+          if(this._o)u+='&order='+this._o;
+          if(this._lim)u+='&limit='+this._lim;
+          if(this._single)u+='&limit=1';
+          const h=Object.assign({},H);
+          if(this._single)h['Accept']='application/vnd.pgrst.object+json';
+          const opts={method:method||'GET',headers:h};
+          if(body)opts.body=JSON.stringify(body);
+          try{
+            const res=await fetch(u,opts);
+            if(!res.ok){const er=await res.json().catch(()=>({}));return{data:null,error:er};}
+            const data=res.status===204?null:await res.json();
+            return{data,error:null};
+          }catch(ex){return{data:null,error:{message:ex.message}};}
         },
-        
-        then(resolve, reject) { return this._build('GET').then(resolve, reject); },
-        async insert(rows) {
-          const arr = Array.isArray(rows) ? rows : [rows];
-          return this._build('POST', arr);
-        },
-        async update(data) {
-          return this._build('PATCH', data);
-        },
-        async delete() {
-          return this._build('DELETE');
-        }
+        then(resolve,reject){return this._go('GET').then(resolve,reject);},
+        async insert(rows){return this._go('POST',Array.isArray(rows)?rows:[rows]);},
+        async update(data){return this._go('PATCH',data);},
       };
     }
-    
-    // Storage stub
-    const storage = {
-      from(bucket) {
-        return {
-          async upload(path, file, opts) {
-            try {
-              const formData = new FormData();
-              formData.append('', file, path);
-              const res = await fetch(url + '/storage/v1/object/' + bucket + '/' + path, {
-                method: 'POST',
-                headers: { 'apikey': key, 'Authorization': 'Bearer ' + key },
-                body: file
-              });
-              return { error: res.ok ? null : { message: 'Upload failed' } };
-            } catch(e) { return { error: { message: e.message } }; }
-          },
-          getPublicUrl(path) {
-            return { data: { publicUrl: url + '/storage/v1/object/public/' + bucket + '/' + path } };
-          }
-        };
-      }
-    };
-    
-    return {
-      from: (table) => rest(table),
-      storage
-    };
+    const storage={from(bucket){return{
+      async upload(path,file){
+        try{
+          const res=await fetch(url+'/storage/v1/object/'+bucket+'/'+path,{method:'POST',headers:{'apikey':key,'Authorization':'Bearer '+key},body:file});
+          return{error:res.ok?null:{message:'Upload failed'}};
+        }catch(ex){return{error:{message:ex.message}};}
+      },
+      getPublicUrl(path){return{data:{publicUrl:url+'/storage/v1/object/public/'+bucket+'/'+path}};}
+    };}};
+    return{from:(t)=>rest(t),storage};
   }
-  
-  global.supabase = { createClient };
-})(typeof window !== 'undefined' ? window : this);
+  global.supabase={createClient};
+})(typeof window!=='undefined'?window:this);
 </script>
 
 <script>
@@ -967,26 +919,58 @@ function TechVisit({date,tasks,user,setView}){
 
 // ── OWNER DASH ─────────────────────────────────────────────────────────────
 function OwnerDash({user,setView}){
-  const[props,setProps]=useState([]);const[events,setEvents]=useState([]);const[loading,setLoading]=useState(true);
+  const[props,setProps]=useState([]);
+  const[events,setEvents]=useState([]);
+  const[loading,setLoading]=useState(true);
+  const[filter,setFilter]=useState(null); // null | "red" | "amber" | "green" | "pending"
   useEffect(()=>{
     const ids=user.prop_ids||[];
     Promise.all([db.getProperties(ids.length?ids:undefined),db.getEvents(ids.length?{propIds:ids}:{})]).then(([p,ev])=>{setProps(p);setEvents(ev);setLoading(false);});
   },[user.id]);
   if(loading)return e(Spin,null);
-  const pending=events.filter(ev=>ev.rag!=="green"&&ev.quote_status==="none").length;
+  const urgent=events.filter(ev=>ev.rag==="red");
+  const amber=events.filter(ev=>ev.rag==="amber");
+  const complete=events.filter(ev=>ev.rag==="green");
+  const pending=events.filter(ev=>ev.rag!=="green"&&ev.quote_status==="none");
+
+  // Filtered event list view
+  if(filter){
+    const map={red:{list:urgent,label:"Urgent events",rag:"red"},amber:{list:amber,label:"Attention needed",rag:"amber"},green:{list:complete,label:"Completed tasks",rag:"green"},pending:{list:pending,label:"Awaiting your action",rag:null}};
+    const m=map[filter];
+    return e("div",null,
+      e(SectionHead,{title:m.label,sub:events.length+" total events logged",back:()=>setFilter(null)}),
+      m.list.length===0&&e(Card,null,e("div",{style:{textAlign:"center",padding:32,color:C.mid}},"No events in this category.")),
+      m.list.map(ev=>e(Card,{key:ev.id,style:{marginBottom:10}},
+        e("div",{style:{display:"flex",gap:8,marginBottom:6,flexWrap:"wrap",alignItems:"center"}},
+          e(RagBadge,{rag:ev.rag}),
+          e("span",{style:{fontSize:11,color:C.mid}},(ev.areas&&ev.areas.icon||"")+" "+(ev.areas&&ev.areas.name||"")+(ev.rooms?" · "+ev.rooms.name:"")),
+          e("span",{style:{marginLeft:"auto",fontSize:11,color:C.mid}},ev.completed_at?ev.completed_at.slice(0,10):"")),
+        e("div",{style:{fontSize:14,fontWeight:600,marginBottom:4}},ev.title),
+        ev.notes&&e("div",{style:{fontSize:13,color:C.mid}},ev.notes),
+        ev.rag!=="green"&&ev.quote_status==="none"&&e("div",{style:{display:"flex",gap:8,marginTop:8}},
+          e(Btn,{small:true,variant:"ghost",onClick:async()=>{await db.updateEvent(ev.id,{quote_status:"none"});setFilter(null);setTimeout(()=>setFilter(filter),50);}},"Noted"),
+          e(Btn,{small:true,variant:"secondary",onClick:async()=>{await db.updateEvent(ev.id,{quote_status:"requested"});setFilter(null);setTimeout(()=>setFilter(filter),50);}},"Request quote")))));
+  }
+
   return e("div",null,
     e(SectionHead,{title:"Welcome, "+user.name.split(" ")[0],sub:"Your property portfolio"}),
-    e(Grid,{cols:4,gap:10},
-      e(Card,null,e(StatBox,{label:"Properties",value:props.length})),
-      e(Card,null,e(StatBox,{label:"Events logged",value:events.length})),
-      e(Card,null,e(StatBox,{label:"Urgent",value:events.filter(ev=>ev.rag==="red").length,rag:"red"})),
-      e(Card,null,e(StatBox,{label:"Awaiting action",value:pending}))),
+    e(Grid,{cols:2,gap:10},
+      e(Card,{onClick:()=>setFilter("red"),style:{cursor:"pointer",borderLeft:"4px solid "+C.red}},
+        e(StatBox,{label:"Urgent — tap to view",value:urgent.length,rag:"red"})),
+      e(Card,{onClick:()=>setFilter("amber"),style:{cursor:"pointer",borderLeft:"4px solid "+C.amber}},
+        e(StatBox,{label:"Attention needed — tap to view",value:amber.length,rag:"amber"})),
+      e(Card,{onClick:()=>setFilter("green"),style:{cursor:"pointer",borderLeft:"4px solid "+C.green}},
+        e(StatBox,{label:"Completed — tap to view",value:complete.length,rag:"green"})),
+      e(Card,{onClick:()=>setFilter("pending"),style:{cursor:"pointer",borderLeft:"4px solid "+C.mid}},
+        e(StatBox,{label:"Awaiting action — tap to view",value:pending.length}))),
     e("div",{style:{height:14}}),
     props.map(p=>{
       const pe=events.filter(ev=>ev.prop_id===p.id);
       const pr=pe.some(ev=>ev.rag==="red")?"red":pe.some(ev=>ev.rag==="amber")?"amber":"green";
-      return e(Card,{key:p.id,onClick:()=>setView({page:"o_prop",propId:p.id}),style:{marginBottom:12}},
-        e("div",{style:{display:"flex",justifyContent:"space-between",marginBottom:10}},e("div",null,e("div",{style:{fontWeight:700,fontSize:15}},p.name),e("div",{style:{fontSize:12,color:C.mid}},p.address)),e(RagBadge,{rag:pr})),
+      return e(Card,{key:p.id,onClick:()=>setView({page:"o_prop",propId:p.id}),style:{marginBottom:12,cursor:"pointer"}},
+        e("div",{style:{display:"flex",justifyContent:"space-between",marginBottom:10}},
+          e("div",null,e("div",{style:{fontWeight:700,fontSize:15}},p.name),e("div",{style:{fontSize:12,color:C.mid}},p.address)),
+          e(RagBadge,{rag:pr})),
         e("div",{style:{display:"flex",gap:14,fontSize:12}},
           e("span",{style:{color:C.red}},"✕ "+pe.filter(ev=>ev.rag==="red").length+" urgent"),
           e("span",{style:{color:C.amber}},"⚠ "+pe.filter(ev=>ev.rag==="amber").length+" amber"),
@@ -994,7 +978,6 @@ function OwnerDash({user,setView}){
     }));
 }
 
-// ── OWNER PROPERTY ─────────────────────────────────────────────────────────
 function OwnerProp({user,propId,setView}){
   const[prop,setProp]=useState(null);const[areas,setAreas]=useState([]);const[events,setEvents]=useState([]);const[loading,setLoading]=useState(true);
   useEffect(()=>{Promise.all([db.getProperties([propId]),db.getAreas(propId),db.getEvents({propId})]).then(([ps,a,ev])=>{setProp(ps[0]);setAreas(a);setEvents(ev);setLoading(false);});},[propId]);
@@ -1069,16 +1052,46 @@ function OwnerRoom({user,propId,areaId,roomId,setView}){
 
 // ── OWNER SCHEDULE ─────────────────────────────────────────────────────────
 function OwnerSchedule({user}){
-  const[months,setMonths]=useState({});const[selMonth,setSelMonth]=useState(null);const[monthTasks,setMonthTasks]=useState([]);const[approving,setApproving]=useState(false);const[msg,setMsg]=useState("");const[loading,setLoading]=useState(true);const[expanded,setExpanded]=useState({});
+  const[months,setMonths]=useState({});
+  const[selMonth,setSelMonth]=useState(null);
+  const[monthTasks,setMonthTasks]=useState([]);
+  const[approving,setApproving]=useState(false);
+  const[msg,setMsg]=useState("");
+  const[loading,setLoading]=useState(true);
+  const[expanded,setExpanded]=useState({});
   const propId=(user.prop_ids||[])[0]||"p1";
+
   useEffect(()=>{db.getScheduleMonths(propId).then(m=>{setMonths(m);setLoading(false);});},[propId]);
-  const openMonth=async m=>{setSelMonth(m);setExpanded({});const t=await db.getScheduleForMonth(propId,m);setMonthTasks(t);};
-  const approve=async()=>{setApproving(true);await db.approveMonth(propId,selMonth,user.id);setMonths(m=>Object.assign({},m,{[selMonth]:"approved"}));setMsg("Schedule approved ✓");setApproving(false);setTimeout(()=>setMsg(""),3000);};
+
+  const openMonth=async m=>{
+    setSelMonth(m);setExpanded({});
+    const t=await db.getScheduleForMonth(propId,m);
+    setMonthTasks(t);
+  };
+  const approve=async()=>{
+    setApproving(true);
+    await db.approveMonth(propId,selMonth,user.id);
+    setMonths(m=>Object.assign({},m,{[selMonth]:"approved"}));
+    setMsg("Schedule approved ✓");setApproving(false);
+    setTimeout(()=>setMsg(""),3000);
+  };
   const toggle=key=>setExpanded(p=>Object.assign({},p,{[key]:!p[key]}));
   if(loading)return e(Spin,null);
-  const SC={draft:{bg:"#F1F5F9",c:C.mid,l:"Being prepared"},proposed:{bg:C.amberL,c:C.amber,l:"Awaiting your approval"},approved:{bg:C.greenL,c:C.green,l:"Approved ✓"},rejected:{bg:C.redL,c:C.red,l:"Rejected"}};
 
-  // Group tasks by area
+  // Sort months chronologically Oct 2026 first
+  const MONTH_ORDER=["October 2026","November 2026","December 2026","January 2027","February 2027","March 2027","April 2027","May 2027","June 2027","July 2027","August 2027","September 2027"];
+  const sortedMonths=MONTH_ORDER.filter(m=>months[m]!==undefined);
+  // Add any months not in the fixed list (fallback)
+  Object.keys(months).forEach(m=>{if(!MONTH_ORDER.includes(m))sortedMonths.push(m);});
+
+  const SC={
+    draft:    {bg:"#F1F5F9",c:C.mid,   l:"Being prepared"},
+    proposed: {bg:C.amberL, c:C.amber, l:"Awaiting your approval"},
+    approved: {bg:C.greenL, c:C.green, l:"Approved ✓"},
+    rejected: {bg:C.redL,   c:C.red,   l:"Rejected"},
+  };
+
+  // Group by area — Guest Rooms expands to show individual room numbers
   const groupByArea=tasks=>{
     const map={};
     tasks.forEach(s=>{
@@ -1097,48 +1110,105 @@ function OwnerSchedule({user}){
   return e("div",null,
     e(SectionHead,{title:"PPM Schedule",sub:"12-month planned maintenance programme"}),
     msg&&e("div",{style:{marginBottom:14,padding:"10px 14px",background:C.greenL,color:C.green,borderRadius:8,fontSize:13,fontWeight:600}},msg),
-    e("div",{style:{fontSize:13,color:C.mid,marginBottom:16,padding:"10px 14px",background:C.tealL,borderRadius:8,lineHeight:1.6}},"Tap a month to review planned works. Once happy tap ",e("b",null,"Approve")," — this confirms the visit."),
+    e("div",{style:{fontSize:13,color:C.mid,marginBottom:16,padding:"10px 14px",background:C.tealL,borderRadius:8,lineHeight:1.6}},
+      "Tap a month to review planned works. Once happy tap ",e("b",null,"Approve")," — this confirms the visit."),
+
+    // Month grid — sorted Oct 2026 first
     e("div",{style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:20}},
-      Object.entries(months).map(([month,status])=>{
+      sortedMonths.map(month=>{
+        const status=months[month]||"draft";
         const sc=SC[status]||SC.draft;
-        return e("div",{key:month,onClick:()=>openMonth(month),style:{padding:"10px 12px",borderRadius:8,cursor:"pointer",border:"1.5px solid "+(selMonth===month?C.teal:C.line),background:selMonth===month?C.tealL:sc.bg}},
+        return e("div",{key:month,onClick:()=>openMonth(month),
+          style:{padding:"10px 12px",borderRadius:8,cursor:"pointer",
+            border:"1.5px solid "+(selMonth===month?C.teal:C.line),
+            background:selMonth===month?C.tealL:sc.bg}},
           e("div",{style:{fontSize:12,fontWeight:700,color:selMonth===month?C.teal:C.text}},month),
-          e("div",{style:{fontSize:10,color:sc.c,marginTop:3,fontWeight:600}},sc.l));})),
+          e("div",{style:{fontSize:10,color:sc.c,marginTop:3,fontWeight:600}},sc.l));
+      })),
+
+    // Month detail
     selMonth&&e("div",null,
       e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:10}},
-        e("div",null,e("div",{style:{fontWeight:700,fontSize:17}},selMonth),e("div",{style:{fontSize:12,color:C.mid}},"Proposed visit: "+(monthTasks.length?monthTasks[0].due_date:"TBC"))),
+        e("div",null,
+          e("div",{style:{fontWeight:700,fontSize:17}},selMonth),
+          e("div",{style:{fontSize:12,color:C.mid}},"Proposed visit: "+(monthTasks.length?monthTasks[0].due_date:"TBC"))),
         months[selMonth]==="proposed"&&e(Btn,{variant:"green",onClick:approve,disabled:approving},approving?"Approving…":"Approve this month ✓"),
         months[selMonth]==="approved"&&e("span",{style:{padding:"6px 14px",borderRadius:20,background:C.greenL,color:C.green,fontSize:13,fontWeight:700}},"✓ Approved"),
         months[selMonth]==="draft"&&e("span",{style:{fontSize:12,color:C.mid,fontStyle:"italic"}},"Being prepared by PMS Malta")),
+
+      // Area cards — collapsed by default
       groupByArea(monthTasks).map(group=>{
         const isOpen=expanded[group.areaId];
         const roomList=Object.values(group.rooms);
         const totalTasks=group.areaTasks.length+roomList.reduce((s,r)=>s+r.tasks.length,0);
+        const isGuestRooms=group.name&&group.name.toLowerCase().includes("guest");
+
         return e(Card,{key:group.areaId,style:{marginBottom:10,padding:0,overflow:"hidden"}},
-          e("div",{onClick:()=>toggle(group.areaId),style:{display:"flex",alignItems:"center",gap:12,padding:"14px 16px",cursor:"pointer",background:isOpen?C.tealL:C.white}},
+          // Header — always visible
+          e("div",{onClick:()=>toggle(group.areaId),
+            style:{display:"flex",alignItems:"center",gap:12,padding:"14px 16px",cursor:"pointer",background:isOpen?C.tealL:C.white}},
             e("span",{style:{fontSize:24}},group.icon),
             e("div",{style:{flex:1}},
               e("div",{style:{fontWeight:700,fontSize:15,color:C.text}},group.name),
               e("div",{style:{fontSize:12,color:C.mid,marginTop:2}},
-                roomList.length>0?roomList.map(r=>r.name).join(" · "):(totalTasks+" maintenance tasks"))),
-            e("span",{style:{fontSize:20,color:C.teal,fontWeight:700,display:"inline-block",transform:isOpen?"rotate(90deg)":"none",transition:"transform .2s",flexShrink:0}},"›")),
+                isGuestRooms&&roomList.length>0
+                  // Show room numbers for guest rooms
+                  ? "Rooms: "+roomList.map(r=>r.name.replace("Room ","")).join(", ")
+                  : roomList.length>0
+                    ? roomList.map(r=>r.name).join(" · ")
+                    : totalTasks+" maintenance tasks")),
+            e("span",{style:{fontSize:20,color:C.teal,fontWeight:700,display:"inline-block",
+              transform:isOpen?"rotate(90deg)":"none",transition:"transform .2s",flexShrink:0}},"›")),
+
+          // Expanded content
           isOpen&&e("div",{style:{borderTop:"1px solid "+C.line,padding:"12px 16px"}},
-            roomList.map(room=>e("div",{key:room.name,style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:"1px dashed "+C.line}},
+            // Guest rooms: show room grid then task list
+            isGuestRooms&&roomList.length>0&&e("div",null,
+              e("div",{style:{fontSize:11,fontWeight:700,color:C.mid,marginBottom:8,textTransform:"uppercase",letterSpacing:0.5}},"Rooms included this visit"),
+              e("div",{style:{display:"flex",flexWrap:"wrap",gap:6,marginBottom:14}},
+                roomList.map(room=>e("div",{key:room.name,
+                  style:{padding:"4px 10px",borderRadius:6,background:C.tealL,color:C.teal,fontSize:12,fontWeight:700,border:"1px solid "+C.teal}},
+                  room.name))),
+              e("div",{style:{fontSize:11,fontWeight:700,color:C.mid,marginBottom:8,textTransform:"uppercase",letterSpacing:0.5}},"Tasks performed in each room")),
+
+            // Non-guest rooms with rooms
+            !isGuestRooms&&roomList.map(room=>e("div",{key:room.name,
+              style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:"1px dashed "+C.line}},
               e("div",{style:{display:"flex",alignItems:"center",gap:10}},
                 e("div",{style:{width:8,height:8,borderRadius:"50%",background:C.teal,flexShrink:0}}),
                 e("span",{style:{fontSize:14,fontWeight:600,color:C.text}},room.name)),
               e("span",{style:{fontSize:12,color:C.mid}},room.tasks.length+" tasks"))),
-            group.areaTasks.length>0&&e("div",{style:{marginTop:roomList.length?10:0}},
-              roomList.length>0&&e("div",{style:{fontSize:11,fontWeight:700,color:C.mid,marginBottom:6,textTransform:"uppercase",letterSpacing:0.5}},"Area works"),
-              group.areaTasks.map(s=>e("div",{key:s.id,style:{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:"1px dashed "+C.line}},
+
+            // Area-level tasks
+            group.areaTasks.length>0&&e("div",{style:{marginTop:roomList.length&&!isGuestRooms?10:0}},
+              group.areaTasks.map(s=>e("div",{key:s.id,
+                style:{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:"1px dashed "+C.line}},
                 e("div",{style:{width:8,height:8,borderRadius:"50%",background:C.teal,flexShrink:0}}),
                 e("div",{style:{flex:1}},e("span",{style:{fontSize:13,color:C.text}},s.tasks&&s.tasks.name)),
-                s.tasks&&s.tasks.charge_rate>0&&e("span",{style:{fontSize:12,fontWeight:600,color:C.green}},"€"+s.tasks.charge_rate))))));
+                s.tasks&&s.tasks.charge_rate>0&&e("span",{style:{fontSize:12,fontWeight:600,color:C.green}},"€"+s.tasks.charge_rate)))),
+
+            // For guest rooms, also show the task list (area tasks are room tasks in DB)
+            isGuestRooms&&group.areaTasks.length===0&&roomList.length>0&&e("div",null,
+              // Deduplicate tasks across rooms and show unique task names
+              (()=>{
+                const seen=new Set();
+                const unique=[];
+                roomList.forEach(r=>r.tasks.forEach(t=>{
+                  const name=t.tasks&&t.tasks.name;
+                  if(name&&!seen.has(name)){seen.add(name);unique.push(t);}
+                }));
+                return unique.map(s=>e("div",{key:s.id,
+                  style:{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:"1px dashed "+C.line}},
+                  e("div",{style:{width:8,height:8,borderRadius:"50%",background:C.teal,flexShrink:0}}),
+                  e("span",{style:{fontSize:13,color:C.text}},s.tasks&&s.tasks.name)));
+              })())));
       }),
-      months[selMonth]==="proposed"&&e("div",{style:{marginTop:16,padding:"12px 16px",background:C.amberL,borderRadius:8,fontSize:13,color:C.amber,lineHeight:1.6}},"Please review the above and tap ",e("b",null,"Approve")," to confirm.",e("br",null),"Questions? Contact Matthew on +356 79680343.")));
+
+      months[selMonth]==="proposed"&&e("div",{style:{marginTop:16,padding:"12px 16px",background:C.amberL,borderRadius:8,fontSize:13,color:C.amber,lineHeight:1.6}},
+        "Please review and tap ",e("b",null,"Approve")," to confirm.",e("br",null),
+        "Questions? Call Matthew on +356 79680343.")));
 }
 
-// ── OWNER PENDING ──────────────────────────────────────────────────────────
 function OwnerPending({user}){
   const[events,setEvents]=useState([]);const[props,setProps]=useState([]);const[loading,setLoading]=useState(true);
   const propIds=user.prop_ids||[];
