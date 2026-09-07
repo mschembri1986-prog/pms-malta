@@ -89,6 +89,14 @@ const db = {
     const { data } = await q;
     return data || [];
   },
+  async uploadPhoto(file, path) {
+    const { data, error } = await SUPA.storage
+      .from("visit-photos")
+      .upload(path, file, { upsert: true });
+    if (error) { console.error("Upload error:", error); return null; }
+    const { data: urlData } = SUPA.storage.from("visit-photos").getPublicUrl(path);
+    return urlData.publicUrl;
+  },
   async submitVisit(visitData, taskResults) {
     const green = taskResults.filter(t => t.rag === "green").length;
     const amber = taskResults.filter(t => t.rag === "amber").length;
@@ -118,6 +126,7 @@ const db = {
         date: new Date().toLocaleDateString("en-GB", {day:"2-digit",month:"short",year:"numeric"}),
         status: "pending",
         notes: t.note || "",
+        photo_url: t.photoUrl || null,
       });
     }
     await SUPA.from("schedule").update({ status: "complete" }).eq("id", visitData.schedId);
@@ -623,11 +632,21 @@ function TechCheck({schedId,propId,propName,areaId,areaName,areaIcon,roomId,room
 
   const submit = async () => {
     setSubmitting(true);
-    const results = tasks.map(t=>({
-      ref: t.ref, name: t.name, type: t.type,
-      rag: ts[t.id]?.rag||"green",
-      note: ts[t.id]?.note||"",
-      photo: ts[t.id]?.photo||false,
+    // Upload photos first, collect URLs
+    const results = await Promise.all(tasks.map(async t=>{
+      const taskState = ts[t.id]||{};
+      let photoUrl = null;
+      if(taskState.photoFile) {
+        const path = propId+"/"+areaId+"/"+(roomId||"area")+"/"+t.ref+"_"+Date.now()+".jpg";
+        photoUrl = await db.uploadPhoto(taskState.photoFile, path);
+      }
+      return {
+        ref: t.ref, name: t.name, type: t.type,
+        rag: taskState.rag||"green",
+        note: taskState.note||"",
+        photo: taskState.photo||false,
+        photoUrl,
+      };
     }));
     await db.submitVisit({schedId,propId,areaId,roomId,techId,techName},results);
     setSubmitted(true); setSubmitting(false);
@@ -662,14 +681,30 @@ function TechCheck({schedId,propId,propName,areaId,areaName,areaIcon,roomId,room
                 </button>
               ))}
               {task.photo_required&&(
-                <button onClick={()=>set(task.id,"photo",!t.photo)} style={{marginLeft:"auto",padding:"4px 12px",borderRadius:7,border:"1.5px solid "+(t.photo?C.teal:C.line),background:t.photo?C.tealL:C.white,color:t.photo?C.teal:C.mid,fontSize:12,cursor:"pointer"}}>
-                  {t.photo?"📷 Taken":"📷 Photo"}
-                </button>
+                <label style={{marginLeft:"auto",padding:"4px 12px",borderRadius:7,border:"1.5px solid "+(t.photo?C.teal:C.line),background:t.photo?C.tealL:C.white,color:t.photo?C.teal:C.mid,fontSize:12,cursor:"pointer",display:"inline-flex",alignItems:"center",gap:6}}>
+                  {t.photo?"📷 "+t.photoName:"📷 Take photo"}
+                  <input type="file" accept="image/*" capture="environment"
+                    style={{display:"none"}}
+                    onChange={async(e)=>{
+                      const file=e.target.files[0];
+                      if(!file) return;
+                      set(task.id,"photo",true);
+                      set(task.id,"photoName",file.name);
+                      set(task.id,"photoFile",file);
+                      set(task.id,"photoPreview",URL.createObjectURL(file));
+                    }}/>
+                </label>
               )}
             </div>
             {t.rag&&t.rag!=="green"&&(
               <textarea placeholder="Describe the finding…" rows={2} value={t.note||""} onChange={e=>set(task.id,"note",e.target.value)}
                 style={{marginTop:10,width:"100%",padding:8,border:"1px solid "+C.line,borderRadius:6,fontSize:13,resize:"vertical",fontFamily:"inherit",boxSizing:"border-box"}}/>
+            )}
+            {t.photoPreview&&(
+              <div style={{marginTop:10}}>
+                <img src={t.photoPreview} alt="Photo preview" style={{width:"100%",maxHeight:200,objectFit:"cover",borderRadius:8,border:"1px solid "+C.line}}/>
+                <div style={{fontSize:11,color:C.teal,marginTop:4}}>✓ Photo ready to upload</div>
+              </div>
             )}
           </Card>
         );
