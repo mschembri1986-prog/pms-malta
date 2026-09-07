@@ -79,10 +79,55 @@ const db = {
     const { data } = await SUPA.from("visits").select("*").eq("prop_id", propId).order("date", { ascending: false });
     return data || [];
   },
+  async getTasksForRoom(propId, areaId, roomId) {
+    const { data } = await SUPA.from("room_tasks")
+      .select("*, tasks(*)")
+      .eq("prop_id", propId).eq("area_id", areaId).eq("room_id", roomId).eq("active", true);
+    return (data||[]).map(rt=>rt.tasks).filter(Boolean);
+  },
+  async getTasksForArea(propId, areaId) {
+    const { data } = await SUPA.from("area_tasks")
+      .select("*, tasks(*)")
+      .eq("prop_id", propId).eq("area_id", areaId).eq("active", true);
+    return (data||[]).map(at=>at.tasks).filter(Boolean);
+  },
   async getTasks() {
     const { data } = await SUPA.from("tasks").select("*").eq("active", true);
     return data || [];
   },
+  async addRoom(propId, areaId, name, subName) {
+    const roomId = "r" + Date.now();
+    await SUPA.from("rooms").insert({ id:roomId, prop_id:propId, area_id:areaId, name, sub_name:subName, rag:"green" });
+    // Auto-assign all standard room tasks
+    const { data: tasks } = await SUPA.from("tasks").select("id").eq("active", true);
+    if(tasks) {
+      const assignments = tasks.map(t=>({ task_id:t.id, prop_id:propId, area_id:areaId, room_id:roomId }));
+      await SUPA.from("room_tasks").insert(assignments);
+    }
+    return roomId;
+  },
+  async addProperty(name, address, type, ownerId) {
+    const id = "p" + Date.now();
+    await SUPA.from("properties").insert({ id, name, address, type, owner_id:ownerId, rag:"green", room_count:0 });
+    return id;
+  },
+  async addArea(propId, name, icon, hasRooms) {
+    const id = "a" + Date.now();
+    const count = await SUPA.from("areas").select("sort_order", {count:"exact"}).eq("prop_id", propId);
+    await SUPA.from("areas").insert({ id, prop_id:propId, name, icon:icon||"📋", has_rooms:hasRooms, rag:"green", sort_order:10 });
+    return id;
+  },
+  async addUser(name, role, email, password, propIds) {
+    const id = "u" + Date.now();
+    const { error } = await SUPA.from("users").insert({ id, name, role, email, password, prop_ids:propIds||[] });
+    if(error) throw error;
+    return id;
+  },
+  async updateProperty(id, updates) { await SUPA.from("properties").update(updates).eq("id", id); },
+  async updateArea(id, updates)     { await SUPA.from("areas").update(updates).eq("id", id); },
+  async updateRoom(id, updates)     { await SUPA.from("rooms").update(updates).eq("id", id); },
+  async updateUser(id, updates)     { await SUPA.from("users").update(updates).eq("id", id); },
+  async getUsers()                  { const { data } = await SUPA.from("users").select("*"); return data||[]; },
   async getSchedule(techId) {
     let q = SUPA.from("schedule").select("*").order("date");
     if (techId) q = q.eq("tech_id", techId);
@@ -625,7 +670,10 @@ function TechCheck({schedId,propId,propName,areaId,areaName,areaIcon,roomId,room
   const [ts,setTs]=useState({});
   const [submitted,setSubmitted]=useState(false);
   const [submitting,setSubmitting]=useState(false);
-  useEffect(()=>{ db.getTasks().then(setTasks); },[]);
+  useEffect(()=>{
+    if(roomId) db.getTasksForRoom(propId,areaId,roomId).then(t=>{ if(t.length) setTasks(t); else db.getTasks().then(setTasks); });
+    else db.getTasksForArea(propId,areaId).then(t=>{ if(t.length) setTasks(t); else db.getTasks().then(setTasks); });
+  },[propId,areaId,roomId]);
 
   const set=(id,field,val)=>setTs(prev=>({...prev,[id]:{...(prev[id]||{}),[field]:val}}));
   const completed=Object.keys(ts).filter(id=>ts[id]?.rag).length;
@@ -1002,9 +1050,178 @@ function OwnerReports() {
   );
 }
 
+
+// ── ADMIN MANAGE ───────────────────────────────────────────────────────────
+function AdminManage({setView}) {
+  const [tab,setTab]=useState("properties");
+  const [props,setProps]=useState([]);
+  const [users,setUsers]=useState([]);
+  const [tasks,setTasks]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [msg,setMsg]=useState("");
+
+  // Add property form
+  const [pName,setPName]=useState(""); const [pAddr,setPAddr]=useState(""); const [pType,setPType]=useState("Boutique Hotel");
+  // Add room form  
+  const [rProp,setRProp]=useState(""); const [rArea,setRArea]=useState(""); const [rName,setRName]=useState(""); const [rSub,setRSub]=useState("");
+  const [areas,setAreas]=useState([]);
+  // Add user form
+  const [uName,setUName]=useState(""); const [uRole,setURole]=useState("tech"); const [uEmail,setUEmail]=useState(""); const [uPass,setUPass]=useState("");
+
+  useEffect(()=>{
+    Promise.all([db.getProperties(),db.getUsers(),db.getTasks()]).then(([p,u,t])=>{
+      setProps(p); setUsers(u); setTasks(t); setLoading(false);
+    });
+  },[]);
+
+  useEffect(()=>{
+    if(rProp) db.getAreas(rProp).then(setAreas);
+  },[rProp]);
+
+  const notify=(m)=>{setMsg(m); setTimeout(()=>setMsg(""),3000);};
+
+  const addProp=async()=>{
+    if(!pName||!pAddr){notify("Name and address are required.");return;}
+    await db.addProperty(pName,pAddr,pType,"u2");
+    setPName(""); setPAddr("");
+    db.getProperties().then(setProps);
+    notify("Property added ✓");
+  };
+
+  const addRoom=async()=>{
+    if(!rProp||!rArea||!rName){notify("Property, area and room name are required.");return;}
+    await db.addRoom(rProp,rArea,rName,rSub);
+    setRName(""); setRSub("");
+    notify("Room added with "+tasks.length+" tasks auto-assigned ✓");
+  };
+
+  const addUser=async()=>{
+    if(!uName||!uEmail||!uPass){notify("Name, email and password are required.");return;}
+    try{
+      await db.addUser(uName,uRole,uEmail,uPass,[]);
+      setUName(""); setUEmail(""); setUPass("");
+      db.getUsers().then(setUsers);
+      notify("User added ✓");
+    } catch(e){ notify("Error: "+e.message); }
+  };
+
+  if(loading) return <Spinner/>;
+
+  const inp=(val,set,ph,type="text")=>(
+    <input value={val} onChange={e=>set(e.target.value)} placeholder={ph} type={type}
+      style={{width:"100%",padding:"8px 12px",borderRadius:7,border:"1px solid "+C.line,fontSize:13,outline:"none",marginBottom:8}}/>
+  );
+  const sel=(val,set,opts)=>(
+    <select value={val} onChange={e=>set(e.target.value)}
+      style={{width:"100%",padding:"8px 12px",borderRadius:7,border:"1px solid "+C.line,fontSize:13,outline:"none",marginBottom:8,background:C.white}}>
+      {opts.map(o=><option key={o.v} value={o.v}>{o.l}</option>)}
+    </select>
+  );
+
+  return (
+    <div>
+      <SectionHead title="Manage" sub="Add and edit properties, rooms and users"/>
+      {msg&&<div style={{marginBottom:14,padding:"10px 14px",background:C.greenL,color:C.green,borderRadius:8,fontSize:13,fontWeight:600}}>{msg}</div>}
+
+      {/* Tabs */}
+      <div style={{display:"flex",gap:6,marginBottom:20,flexWrap:"wrap"}}>
+        {[["properties","Properties"],["rooms","Add room"],["users","Users"],["tasks","Tasks"]].map(([id,l])=>(
+          <button key={id} onClick={()=>setTab(id)} style={{padding:"7px 16px",borderRadius:20,border:"1.5px solid "+(tab===id?C.teal:C.line),background:tab===id?C.teal:C.white,color:tab===id?C.white:C.mid,fontSize:13,fontWeight:600,cursor:"pointer"}}>{l}</button>
+        ))}
+      </div>
+
+      {/* PROPERTIES TAB */}
+      {tab==="properties"&&<div>
+        <Card style={{marginBottom:16}}>
+          <div style={{fontWeight:700,fontSize:14,marginBottom:14}}>Add new property</div>
+          {inp(pName,setPName,"Property name e.g. 66 Saint Paul's Malta")}
+          {inp(pAddr,setPAddr,"Address")}
+          {sel(pType,setPType,[{v:"Boutique Hotel",l:"Boutique Hotel"},{v:"Boutique Hostel",l:"Boutique Hostel"},{v:"Apartment Block",l:"Apartment Block"},{v:"Commercial",l:"Commercial"}])}
+          <Btn onClick={addProp}>Add property</Btn>
+        </Card>
+        <Card>
+          <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>Existing properties</div>
+          {props.map(p=>(
+            <div key={p.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:"1px solid "+C.line}}>
+              <div><div style={{fontSize:13,fontWeight:600}}>{p.name}</div><div style={{fontSize:11,color:C.mid}}>{p.type} · {p.address}</div></div>
+              <RagBadge rag={p.rag}/>
+            </div>
+          ))}
+        </Card>
+      </div>}
+
+      {/* ROOMS TAB */}
+      {tab==="rooms"&&<div>
+        <Card style={{marginBottom:16}}>
+          <div style={{fontWeight:700,fontSize:14,marginBottom:6}}>Add new room</div>
+          <div style={{fontSize:12,color:C.teal,marginBottom:14,padding:"8px 12px",background:C.tealL,borderRadius:6}}>
+            ✓ All {tasks.length} standard tasks will be auto-assigned to this room when added
+          </div>
+          {sel(rProp,setRProp,[{v:"",l:"Select property…"},...props.map(p=>({v:p.id,l:p.name}))])}
+          {sel(rArea,setRArea,[{v:"",l:"Select area…"},...areas.map(a=>({v:a.id,l:a.name}))])}
+          {inp(rName,setRName,"Room name e.g. Room 207")}
+          {inp(rSub,setRSub,"Room type e.g. Deluxe (optional)")}
+          <Btn onClick={addRoom}>Add room + auto-assign tasks</Btn>
+        </Card>
+        <div style={{fontSize:12,color:C.mid,padding:"8px 0"}}>Auto-assigned tasks when adding a room:</div>
+        {tasks.map(t=>(
+          <div key={t.id} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 0",borderBottom:"1px solid "+C.line,fontSize:12}}>
+            <span style={{fontWeight:700,color:C.teal,minWidth:36}}>{t.ref}</span>
+            <span style={{flex:1}}>{t.name}</span>
+            <span style={{color:C.mid}}>{t.frequency}</span>
+            <TypeBadge type={t.type}/>
+          </div>
+        ))}
+      </div>}
+
+      {/* USERS TAB */}
+      {tab==="users"&&<div>
+        <Card style={{marginBottom:16}}>
+          <div style={{fontWeight:700,fontSize:14,marginBottom:14}}>Add new user</div>
+          {inp(uName,setUName,"Full name")}
+          {sel(uRole,setURole,[{v:"tech",l:"Tech / Engineer"},{v:"owner",l:"Owner"},{v:"admin",l:"Admin"}])}
+          {inp(uEmail,setUEmail,"Email address","email")}
+          {inp(uPass,setUPass,"Password","password")}
+          <Btn onClick={addUser}>Add user</Btn>
+        </Card>
+        <Card>
+          <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>All users</div>
+          {users.map(u=>(
+            <div key={u.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:"1px solid "+C.line}}>
+              <div><div style={{fontSize:13,fontWeight:600}}>{u.name}</div><div style={{fontSize:11,color:C.mid}}>{u.email}</div></div>
+              <span style={{padding:"2px 10px",borderRadius:20,background:{admin:C.tealL,tech:"#EEF2FF",owner:C.amberL}[u.role]||C.bg,color:{admin:C.teal,tech:"#6366F1",owner:C.amber}[u.role]||C.mid,fontSize:11,fontWeight:600}}>{u.role}</span>
+            </div>
+          ))}
+        </Card>
+      </div>}
+
+      {/* TASKS TAB */}
+      {tab==="tasks"&&<div>
+        <Card style={{marginBottom:12,padding:"10px 14px",background:C.tealL}}>
+          <div style={{fontSize:13,color:C.teal}}>Tasks are the standard checklist applied to every room. To add a custom task for a specific area, go to Supabase → area_tasks table.</div>
+        </Card>
+        {tasks.map(t=>(
+          <Card key={t.id} style={{marginBottom:8}}>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+              <div style={{display:"flex",gap:8,alignItems:"center"}}><span style={{fontSize:11,fontWeight:700,color:C.teal,minWidth:36}}>{t.ref}</span><span style={{fontSize:14,fontWeight:600}}>{t.name}</span></div>
+              <TypeBadge type={t.type}/>
+            </div>
+            <div style={{fontSize:12,color:C.mid,marginBottom:6}}>{t.description}</div>
+            <div style={{display:"flex",gap:12,fontSize:11,color:C.mid,flexWrap:"wrap"}}>
+              <span>Frequency: <b style={{color:C.teal}}>{t.frequency}</b></span>
+              <span>Grade: <b style={{color:t.grade==="Licensed"?C.amber:C.mid}}>{t.grade}</b></span>
+              <span>Photo: <b style={{color:t.photo_required?C.teal:C.mid}}>{t.photo_required?"Required":"Optional"}</b></span>
+            </div>
+          </Card>
+        ))}
+      </div>}
+    </div>
+  );
+}
+
 // ── NAV ────────────────────────────────────────────────────────────────────
 const NAVS = {
-  admin:[{id:"a_dash",l:"Dashboard",i:"⊞"},{id:"a_cal",l:"Calendar",i:"📅"},{id:"a_tasks",l:"Tasks",i:"✓"},{id:"a_find",l:"Findings",i:"⚑"}],
+  admin:[{id:"a_dash",l:"Dashboard",i:"⊞"},{id:"a_cal",l:"Calendar",i:"📅"},{id:"a_tasks",l:"Tasks",i:"✓"},{id:"a_find",l:"Findings",i:"⚑"},{id:"a_manage",l:"Manage",i:"⚙️"}],
   tech: [{id:"t_dash",l:"My visits",i:"📋"}],
   owner:[{id:"o_dash",l:"Properties",i:"🏨"},{id:"o_pend",l:"Pending",i:"⚑"},{id:"o_rep",l:"Reports",i:"📊"}],
 };
@@ -1026,6 +1243,7 @@ function App() {
 
   const isActive=(nid)=>{
     if(nid==="a_dash"&&(view.page.startsWith("a_prop")||view.page.startsWith("a_area")||view.page.startsWith("a_room"))) return true;
+    if(nid==="a_manage"&&view.page==="a_manage") return true;
     if(nid==="o_dash"&&(view.page.startsWith("o_prop")||view.page.startsWith("o_area")||view.page.startsWith("o_room"))) return true;
     if(nid==="t_dash"&&view.page.startsWith("t_")) return true;
     return view.page===nid;
@@ -1050,6 +1268,7 @@ function App() {
       case "o_room": return <OwnerRoom user={user} propId={view.propId} areaId={view.areaId} roomId={view.roomId} setView={setView}/>;
       case "o_pend": return <OwnerPending user={user}/>;
       case "o_rep":  return <OwnerReports/>;
+      case "a_manage": return <AdminManage setView={setView}/>;
       default: return null;
     }
   };
