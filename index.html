@@ -543,37 +543,82 @@ function OwnerRoom({user,propId,areaId,roomId,setView}){
 
 // ── OWNER SCHEDULE APPROVAL ────────────────────────────────────────────────
 function OwnerSchedule({user}){
-  const[months,setMonths]=useState({});const[selMonth,setSelMonth]=useState(null);const[monthTasks,setMonthTasks]=useState([]);const[approving,setApproving]=useState(false);const[msg,setMsg]=useState("");const[loading,setLoading]=useState(true);
+  const[months,setMonths]=useState({});const[selMonth,setSelMonth]=useState(null);const[monthTasks,setMonthTasks]=useState([]);const[approving,setApproving]=useState(false);const[msg,setMsg]=useState("");const[loading,setLoading]=useState(true);const[expanded,setExpanded]=useState({});
   const propId=(user.prop_ids||[])[0]||"p1";
   useEffect(()=>{db.getScheduleMonths(propId).then(m=>{setMonths(m);setLoading(false);});},[propId]);
-  const openMonth=async m=>{setSelMonth(m);const t=await db.getScheduleForMonth(propId,m);setMonthTasks(t);};
+  const openMonth=async m=>{setSelMonth(m);const t=await db.getScheduleForMonth(propId,m);setMonthTasks(t);setExpanded({});};
   const approve=async()=>{setApproving(true);await db.approveMonth(propId,selMonth,user.id);setMonths(m=>({...m,[selMonth]:"approved"}));setMsg("Schedule approved ✓");setApproving(false);setTimeout(()=>setMsg(""),3000);};
+  const toggleExpand=key=>setExpanded(p=>({...p,[key]:!p[key]}));
   if(loading)return<Spin/>;
   const STATUS={draft:{bg:"#F1F5F9",c:C.mid,l:"Not yet proposed"},proposed:{bg:C.amberL,c:C.amber,l:"Awaiting your approval"},approved:{bg:C.greenL,c:C.green,l:"Approved ✓"},rejected:{bg:C.redL,c:C.red,l:"Rejected"}};
+
+  // Group tasks by area for clean display
+  const groupByArea=(tasks)=>{
+    const groups={};
+    tasks.forEach(s=>{
+      const areaName=s.areas?.name||"General";
+      const areaIcon=s.areas?.icon||"📋";
+      const key=s.area_id;
+      if(!groups[key])groups[key]={icon:areaIcon,name:areaName,areaId:key,tasks:[]};
+      groups[key].tasks.push(s);
+    });
+    return Object.values(groups);
+  };
+
+  const typeLabel={elec:"Electrical",hydro:"Water/Legionella",hvac:"HVAC",misc:"General",fire:"Fire",pest:"Pest",pool:"Pool"};
+
   return<div>
-    <SectionHead title="Visit schedule" sub="Review and approve monthly PPM visits"/>
+    <SectionHead title="PPM Schedule" sub="12-month planned maintenance programme"/>
     {msg&&<div style={{marginBottom:14,padding:"10px 14px",background:C.greenL,color:C.green,borderRadius:8,fontSize:13,fontWeight:600}}>{msg}</div>}
-    <div style={{fontSize:13,color:C.mid,marginBottom:16,padding:"10px 14px",background:C.tealL,borderRadius:8}}>Tap a month to see planned tasks. Approved months are added to the technician's schedule.</div>
+    <div style={{fontSize:13,color:C.mid,marginBottom:16,padding:"10px 14px",background:C.tealL,borderRadius:8,lineHeight:1.6}}>
+      Tap a month to review planned works. Once you are happy, tap Approve — this confirms the visit and we will arrange access with your team.
+    </div>
     <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:20}}>
       {Object.entries(months).map(([month,status])=>{const sc=STATUS[status]||STATUS.draft;return<div key={month} onClick={()=>openMonth(month)} style={{padding:"10px 12px",borderRadius:8,border:"1.5px solid "+(selMonth===month?C.teal:C.line),background:selMonth===month?C.tealL:sc.bg,cursor:"pointer"}}>
         <div style={{fontSize:12,fontWeight:700,color:selMonth===month?C.teal:C.text}}>{month}</div>
         <div style={{fontSize:10,color:sc.c,marginTop:3,fontWeight:600}}>{sc.l}</div>
       </div>;})}
     </div>
-    {selMonth&&<Card>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-        <div><div style={{fontWeight:700,fontSize:15}}>{selMonth}</div><div style={{fontSize:12,color:C.mid}}>{monthTasks.length} tasks planned</div></div>
-        {months[selMonth]==="proposed"&&<Btn variant="green" onClick={approve} disabled={approving}>{approving?"Approving…":"Approve this month ✓"}</Btn>}
-        {months[selMonth]==="approved"&&<span style={{padding:"6px 14px",borderRadius:20,background:C.greenL,color:C.green,fontSize:12,fontWeight:600}}>✓ Approved</span>}
-        {months[selMonth]==="draft"&&<span style={{fontSize:12,color:C.mid}}>Not yet proposed by PMS Malta</span>}
+    {selMonth&&<div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+        <div><div style={{fontWeight:700,fontSize:17}}>{selMonth}</div><div style={{fontSize:12,color:C.mid}}>Proposed visit date: {monthTasks[0]?.due_date||"TBC"}</div></div>
+        <div>
+          {months[selMonth]==="proposed"&&<Btn variant="green" onClick={approve} disabled={approving}>{approving?"Approving…":"Approve ✓"}</Btn>}
+          {months[selMonth]==="approved"&&<span style={{padding:"6px 14px",borderRadius:20,background:C.greenL,color:C.green,fontSize:12,fontWeight:700}}>✓ Approved</span>}
+          {months[selMonth]==="draft"&&<span style={{fontSize:12,color:C.mid,fontStyle:"italic"}}>Being prepared by PMS Malta</span>}
+        </div>
       </div>
-      {monthTasks.map(s=><div key={s.id} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 0",borderBottom:"1px solid "+C.line,flexWrap:"wrap"}}>
-        <div style={{minWidth:80,fontSize:11,fontWeight:600,color:C.teal}}>{s.due_date}</div>
-        <div style={{flex:1}}><div style={{fontSize:13,fontWeight:600}}>{s.tasks?.ref} — {s.tasks?.name}</div><div style={{fontSize:11,color:C.mid}}>{s.areas?.icon} {s.areas?.name}{s.rooms?" · "+s.rooms.name:""} · {s.tasks?.est_minutes}min</div></div>
-        <TypeBadge type={s.tasks?.type}/>
-        {s.tasks?.charge_rate>0&&<span style={{fontSize:11,fontWeight:600,color:C.green}}>€{s.tasks.charge_rate}</span>}
-      </div>)}
-    </Card>}
+      {groupByArea(monthTasks).map(group=>{
+        const isOpen=expanded[group.areaId];
+        const hasAmber=group.tasks.some(t=>t.tasks?.type==="elec"||t.tasks?.type==="fire");
+        return<Card key={group.areaId} style={{marginBottom:10}}>
+          <div onClick={()=>toggleExpand(group.areaId)} style={{display:"flex",alignItems:"center",gap:12,cursor:"pointer"}}>
+            <span style={{fontSize:24}}>{group.icon}</span>
+            <div style={{flex:1}}>
+              <div style={{fontWeight:700,fontSize:15}}>{group.name}</div>
+              <div style={{fontSize:12,color:C.mid,marginTop:2}}>
+                {group.tasks.length} maintenance tasks · tap to {isOpen?"collapse":"expand"}
+              </div>
+            </div>
+            <span style={{fontSize:18,color:C.mid,transform:isOpen?"rotate(90deg)":"none",transition:"transform .2s"}}>›</span>
+          </div>
+          {isOpen&&<div style={{marginTop:14,borderTop:"1px solid "+C.line,paddingTop:12}}>
+            {group.tasks.map((s,i)=><div key={s.id} style={{display:"flex",alignItems:"flex-start",gap:10,padding:"8px 0",borderBottom:i<group.tasks.length-1?"1px dashed "+C.line:"none"}}>
+              <div style={{width:8,height:8,borderRadius:"50%",background:C.teal,flexShrink:0,marginTop:5}}/>
+              <div style={{flex:1}}>
+                <div style={{fontSize:13,fontWeight:600}}>{s.tasks?.name}</div>
+                {s.rooms&&<div style={{fontSize:11,color:C.mid,marginTop:2}}>Room: {s.rooms.name}</div>}
+                <div style={{fontSize:11,color:C.mid,marginTop:1}}>{typeLabel[s.tasks?.type]||s.tasks?.type}</div>
+              </div>
+              {s.tasks?.charge_rate>0&&<span style={{fontSize:11,fontWeight:600,color:C.green,flexShrink:0}}>€{s.tasks.charge_rate}</span>}
+            </div>)}
+          </div>}
+        </Card>;
+      })}
+      {months[selMonth]==="proposed"&&<div style={{marginTop:16,padding:"12px 16px",background:C.amberL,borderRadius:8,fontSize:13,color:C.amber}}>
+        Please review the above and tap <b>Approve</b> to confirm this month's visit. If you have any questions contact Matthew on +356 79680343.
+      </div>}
+    </div>}
   </div>;
 }
 
