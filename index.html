@@ -123,6 +123,24 @@ const db = {
     if(error) throw error;
     return id;
   },
+  async addTask(ref, name, description, type, frequency, grade, photoRequired, appliesTo) {
+    const id = "t" + Date.now();
+    const { error } = await SUPA.from("tasks").insert({
+      id, ref, name, description, type, frequency, grade,
+      photo_required: photoRequired, applies_to: appliesTo, active: true
+    });
+    if(error) throw error;
+    // Auto-assign to all existing rooms if it applies to rooms
+    if(appliesTo === "room" || appliesTo === "both") {
+      const { data: rooms } = await SUPA.from("rooms").select("id, prop_id, area_id");
+      if(rooms && rooms.length) {
+        const assignments = rooms.map(r=>({ task_id:id, prop_id:r.prop_id, area_id:r.area_id, room_id:r.id }));
+        await SUPA.from("room_tasks").insert(assignments);
+      }
+    }
+    return id;
+  },
+  async toggleTask(id, active) { await SUPA.from("tasks").update({active}).eq("id", id); },
   async updateProperty(id, updates) { await SUPA.from("properties").update(updates).eq("id", id); },
   async updateArea(id, updates)     { await SUPA.from("areas").update(updates).eq("id", id); },
   async updateRoom(id, updates)     { await SUPA.from("rooms").update(updates).eq("id", id); },
@@ -1051,6 +1069,150 @@ function OwnerReports() {
 }
 
 
+
+// ── TASKS TAB COMPONENT ────────────────────────────────────────────────────
+function TasksTab({tasks, setTasks, notify, inp, sel}) {
+  const [tRef,setTRef]=useState("");
+  const [tName,setTName]=useState("");
+  const [tDesc,setTDesc]=useState("");
+  const [tType,setTType]=useState("misc");
+  const [tFreq,setTFreq]=useState("Monthly");
+  const [tGrade,setTGrade]=useState("General");
+  const [tPhoto,setTPhoto]=useState(false);
+  const [tApplies,setTApplies]=useState("room");
+  const [adding,setAdding]=useState(false);
+  const [showForm,setShowForm]=useState(false);
+
+  const addTask = async () => {
+    if(!tRef||!tName){notify("Reference and task name are required.");return;}
+    setAdding(true);
+    try {
+      await db.addTask(tRef,tName,tDesc,tType,tFreq,tGrade,tPhoto,tApplies);
+      setTRef(""); setTName(""); setTDesc(""); setTPhoto(false); setShowForm(false);
+      const updated = await db.getTasks();
+      setTasks(updated);
+      const assignedMsg = (tApplies==="room"||tApplies==="both") ? " and auto-assigned to all existing rooms" : "";
+      notify("Task added"+assignedMsg+" ✓");
+    } catch(e) { notify("Error: "+e.message); }
+    setAdding(false);
+  };
+
+  const toggleTask = async (id, current) => {
+    await db.toggleTask(id, !current);
+    setTasks(prev => prev.map(t => t.id===id ? {...t, active:!current} : t));
+  };
+
+  const typeOpts = [{v:"misc",l:"General"},{v:"elec",l:"Electrical"},{v:"hydro",l:"Water / Legionella"},{v:"hvac",l:"HVAC"}];
+  const freqOpts = [{v:"Monthly",l:"Monthly"},{v:"Quarterly",l:"Quarterly"},{v:"Every 6 months",l:"Every 6 months"},{v:"Annual",l:"Annual"},{v:"One-off",l:"One-off"}];
+  const gradeOpts = [{v:"General",l:"General hand"},{v:"Licensed",l:"Licensed engineer"}];
+  const appOpts = [{v:"room",l:"Room tasks (auto-assigned to all rooms)"},{v:"area",l:"Area tasks (specific area only)"},{v:"both",l:"Both rooms and areas"}];
+
+  return (
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+        <div style={{fontWeight:700,fontSize:15}}>Task library ({tasks.length} tasks)</div>
+        <Btn variant={showForm?"ghost":"primary"} small onClick={()=>setShowForm(!showForm)}>
+          {showForm?"Cancel":"+ New task"}
+        </Btn>
+      </div>
+
+      {showForm&&<Card style={{marginBottom:16,borderLeft:"4px solid "+C.teal}}>
+        <div style={{fontWeight:700,fontSize:14,marginBottom:14,color:C.teal}}>Add new task</div>
+
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+          <div>
+            <label style={{fontSize:11,fontWeight:600,color:C.slate,display:"block",marginBottom:4}}>Reference code</label>
+            <input value={tRef} onChange={e=>setTRef(e.target.value)} placeholder="e.g. W-04"
+              style={{width:"100%",padding:"8px 12px",borderRadius:7,border:"1px solid "+C.line,fontSize:13,outline:"none"}}/>
+          </div>
+          <div>
+            <label style={{fontSize:11,fontWeight:600,color:C.slate,display:"block",marginBottom:4}}>Type</label>
+            <select value={tType} onChange={e=>setTType(e.target.value)}
+              style={{width:"100%",padding:"8px 12px",borderRadius:7,border:"1px solid "+C.line,fontSize:13,outline:"none",background:"white"}}>
+              {typeOpts.map(o=><option key={o.v} value={o.v}>{o.l}</option>)}
+            </select>
+          </div>
+        </div>
+
+        <div style={{marginBottom:8}}>
+          <label style={{fontSize:11,fontWeight:600,color:C.slate,display:"block",marginBottom:4}}>Task name</label>
+          <input value={tName} onChange={e=>setTName(e.target.value)} placeholder="e.g. Biocide dosing check"
+            style={{width:"100%",padding:"8px 12px",borderRadius:7,border:"1px solid "+C.line,fontSize:13,outline:"none"}}/>
+        </div>
+
+        <div style={{marginBottom:8}}>
+          <label style={{fontSize:11,fontWeight:600,color:C.slate,display:"block",marginBottom:4}}>Description (shown to tech)</label>
+          <textarea value={tDesc} onChange={e=>setTDesc(e.target.value)} placeholder="Brief instruction for the technician…" rows={2}
+            style={{width:"100%",padding:"8px 12px",borderRadius:7,border:"1px solid "+C.line,fontSize:13,outline:"none",resize:"vertical",fontFamily:"inherit"}}/>
+        </div>
+
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+          <div>
+            <label style={{fontSize:11,fontWeight:600,color:C.slate,display:"block",marginBottom:4}}>Frequency</label>
+            <select value={tFreq} onChange={e=>setTFreq(e.target.value)}
+              style={{width:"100%",padding:"8px 12px",borderRadius:7,border:"1px solid "+C.line,fontSize:13,outline:"none",background:"white"}}>
+              {freqOpts.map(o=><option key={o.v} value={o.v}>{o.l}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={{fontSize:11,fontWeight:600,color:C.slate,display:"block",marginBottom:4}}>Engineer grade</label>
+            <select value={tGrade} onChange={e=>setTGrade(e.target.value)}
+              style={{width:"100%",padding:"8px 12px",borderRadius:7,border:"1px solid "+C.line,fontSize:13,outline:"none",background:"white"}}>
+              {gradeOpts.map(o=><option key={o.v} value={o.v}>{o.l}</option>)}
+            </select>
+          </div>
+        </div>
+
+        <div style={{marginBottom:8}}>
+          <label style={{fontSize:11,fontWeight:600,color:C.slate,display:"block",marginBottom:4}}>Applies to</label>
+          <select value={tApplies} onChange={e=>setTApplies(e.target.value)}
+            style={{width:"100%",padding:"8px 12px",borderRadius:7,border:"1px solid "+C.line,fontSize:13,outline:"none",background:"white"}}>
+            {appOpts.map(o=><option key={o.v} value={o.v}>{o.l}</option>)}
+          </select>
+        </div>
+
+        <label style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer",marginBottom:16,fontSize:13}}>
+          <input type="checkbox" checked={tPhoto} onChange={e=>setTPhoto(e.target.checked)}
+            style={{width:16,height:16,cursor:"pointer"}}/>
+          <span>Photo required from technician</span>
+        </label>
+
+        {(tApplies==="room"||tApplies==="both")&&<div style={{marginBottom:14,padding:"8px 12px",background:C.tealL,borderRadius:6,fontSize:12,color:C.teal}}>
+          ✓ This task will be auto-assigned to all {tasks.length>0?"existing and ":""}new rooms
+        </div>}
+
+        <Btn onClick={addTask} disabled={adding}>
+          {adding?"Adding…":"Add task"}
+        </Btn>
+      </Card>}
+
+      {tasks.map(t=>(
+        <Card key={t.id} style={{marginBottom:8,opacity:t.active?1:0.5}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
+            <div style={{display:"flex",gap:8,alignItems:"center",flex:1}}>
+              <span style={{fontSize:11,fontWeight:700,color:C.teal,minWidth:36}}>{t.ref}</span>
+              <span style={{fontSize:14,fontWeight:600,flex:1}}>{t.name}</span>
+            </div>
+            <div style={{display:"flex",gap:6,alignItems:"center"}}>
+              <TypeBadge type={t.type}/>
+              <button onClick={()=>toggleTask(t.id,t.active)} style={{padding:"3px 10px",borderRadius:20,border:"1px solid "+C.line,background:t.active?C.greenL:"#F1F5F9",color:t.active?C.green:C.mid,fontSize:11,fontWeight:600,cursor:"pointer"}}>
+                {t.active?"Active":"Inactive"}
+              </button>
+            </div>
+          </div>
+          <div style={{fontSize:12,color:C.mid,marginBottom:6}}>{t.description}</div>
+          <div style={{display:"flex",gap:12,fontSize:11,color:C.mid,flexWrap:"wrap"}}>
+            <span>Frequency: <b style={{color:C.teal}}>{t.frequency}</b></span>
+            <span>Grade: <b style={{color:t.grade==="Licensed"?C.amber:C.mid}}>{t.grade}</b></span>
+            <span>Photo: <b style={{color:t.photo_required?C.teal:C.mid}}>{t.photo_required?"Required":"Optional"}</b></span>
+            <span>Applies to: <b style={{color:C.slate}}>{t.applies_to||"room"}</b></span>
+          </div>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
 // ── ADMIN MANAGE ───────────────────────────────────────────────────────────
 function AdminManage({setView}) {
   const [tab,setTab]=useState("properties");
@@ -1196,25 +1358,7 @@ function AdminManage({setView}) {
       </div>}
 
       {/* TASKS TAB */}
-      {tab==="tasks"&&<div>
-        <Card style={{marginBottom:12,padding:"10px 14px",background:C.tealL}}>
-          <div style={{fontSize:13,color:C.teal}}>Tasks are the standard checklist applied to every room. To add a custom task for a specific area, go to Supabase → area_tasks table.</div>
-        </Card>
-        {tasks.map(t=>(
-          <Card key={t.id} style={{marginBottom:8}}>
-            <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
-              <div style={{display:"flex",gap:8,alignItems:"center"}}><span style={{fontSize:11,fontWeight:700,color:C.teal,minWidth:36}}>{t.ref}</span><span style={{fontSize:14,fontWeight:600}}>{t.name}</span></div>
-              <TypeBadge type={t.type}/>
-            </div>
-            <div style={{fontSize:12,color:C.mid,marginBottom:6}}>{t.description}</div>
-            <div style={{display:"flex",gap:12,fontSize:11,color:C.mid,flexWrap:"wrap"}}>
-              <span>Frequency: <b style={{color:C.teal}}>{t.frequency}</b></span>
-              <span>Grade: <b style={{color:t.grade==="Licensed"?C.amber:C.mid}}>{t.grade}</b></span>
-              <span>Photo: <b style={{color:t.photo_required?C.teal:C.mid}}>{t.photo_required?"Required":"Optional"}</b></span>
-            </div>
-          </Card>
-        ))}
-      </div>}
+      {tab==="tasks"&&<TasksTab tasks={tasks} setTasks={setTasks} notify={notify} inp={inp} sel={sel}/>}
     </div>
   );
 }
