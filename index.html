@@ -1,0 +1,1070 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="PMS Malta">
+<title>PMS Malta</title>
+<script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#F7F9FB;min-height:100vh;}
+input,textarea,button{font-family:inherit;}
+button:active{opacity:.85;}
+::-webkit-scrollbar{width:4px;}
+::-webkit-scrollbar-thumb{background:#C0D8DE;border-radius:4px;}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+const SUPA = supabase.createClient(
+  "https://ingmfhuyyhlsdptuebpa.supabase.co",
+  "sb_publishable_TKSTjRCws76fU9mBJtiCLw_-PdqKM0l"
+);
+</script>
+<script type="text/babel">
+const { useState, useEffect } = React;
+
+const C = {
+  nav:"#0F1923", teal:"#1A7A6E", tealL:"#E6F4F2",
+  amber:"#D4920A", amberL:"#FEF7E6", red:"#C0392B", redL:"#FDECEA",
+  green:"#1A7A4A", greenL:"#E6F5ED", mid:"#64748B",
+  line:"#E2E8F0", bg:"#F7F9FB", white:"#FFFFFF", text:"#0F1923", slate:"#2C3E50",
+};
+const RAG = {
+  green:{ bg:C.greenL, text:C.green, border:C.green, dot:C.green, label:"Good" },
+  amber:{ bg:C.amberL, text:C.amber, border:C.amber, dot:C.amber, label:"Attention" },
+  red:  { bg:C.redL,   text:C.red,   border:C.red,   dot:C.red,   label:"Urgent" },
+};
+
+// ── SUPABASE DATA LAYER ────────────────────────────────────────────────────
+const db = {
+  async login(email, password) {
+    const { data, error } = await SUPA.from("users").select("*").eq("email", email).eq("password", password).single();
+    return { data, error };
+  },
+  async getProperties(propIds) {
+    let q = SUPA.from("properties").select("*");
+    if (propIds && propIds.length) q = q.in("id", propIds);
+    const { data } = await q;
+    return data || [];
+  },
+  async getAreas(propId) {
+    const { data } = await SUPA.from("areas").select("*").eq("prop_id", propId).order("sort_order");
+    return data || [];
+  },
+  async getRooms(propId, areaId) {
+    const { data } = await SUPA.from("rooms").select("*").eq("prop_id", propId).eq("area_id", areaId);
+    return data || [];
+  },
+  async getFindings(filters = {}) {
+    let q = SUPA.from("findings").select("*");
+    if (filters.propId)  q = q.eq("prop_id", filters.propId);
+    if (filters.areaId)  q = q.eq("area_id", filters.areaId);
+    if (filters.roomId)  q = q.eq("room_id", filters.roomId);
+    if (filters.propIds) q = q.in("prop_id", filters.propIds);
+    const { data } = await q;
+    return data || [];
+  },
+  async updateFinding(id, updates) {
+    await SUPA.from("findings").update(updates).eq("id", id);
+  },
+  async getVisits(propId) {
+    const { data } = await SUPA.from("visits").select("*").eq("prop_id", propId).order("date", { ascending: false });
+    return data || [];
+  },
+  async getTasks() {
+    const { data } = await SUPA.from("tasks").select("*").eq("active", true);
+    return data || [];
+  },
+  async getSchedule(techId) {
+    let q = SUPA.from("schedule").select("*").order("date");
+    if (techId) q = q.eq("tech_id", techId);
+    const { data } = await q;
+    return data || [];
+  },
+  async submitVisit(visitData, taskResults) {
+    const green = taskResults.filter(t => t.rag === "green").length;
+    const amber = taskResults.filter(t => t.rag === "amber").length;
+    const red   = taskResults.filter(t => t.rag === "red").length;
+    await SUPA.from("visits").insert({
+      id: "v" + Date.now(),
+      prop_id: visitData.propId,
+      date: new Date().toLocaleDateString("en-GB", {day:"2-digit",month:"short",year:"numeric"}),
+      tech_name: visitData.techName,
+      tech_id: visitData.techId,
+      status: "complete",
+      task_count: taskResults.length,
+      green_count: green,
+      amber_count: amber,
+      red_count: red,
+    });
+    for (const t of taskResults.filter(r => r.rag !== "green")) {
+      await SUPA.from("findings").insert({
+        id: "f" + Date.now() + Math.random(),
+        prop_id: visitData.propId,
+        area_id: visitData.areaId,
+        room_id: visitData.roomId || null,
+        ref: t.ref,
+        type: t.type,
+        rag: t.rag,
+        title: t.note || t.name,
+        date: new Date().toLocaleDateString("en-GB", {day:"2-digit",month:"short",year:"numeric"}),
+        status: "pending",
+        notes: t.note || "",
+      });
+    }
+    await SUPA.from("schedule").update({ status: "complete" }).eq("id", visitData.schedId);
+  },
+};
+
+// ── SHARED UI ──────────────────────────────────────────────────────────────
+const RagDot = ({rag,size=10}) => <span style={{display:"inline-block",width:size,height:size,borderRadius:"50%",background:RAG[rag]?.dot||C.mid,flexShrink:0}}/>;
+const RagBadge = ({rag}) => rag && RAG[rag] ? (
+  <span style={{display:"inline-flex",alignItems:"center",gap:5,padding:"3px 10px",borderRadius:20,background:RAG[rag].bg,color:RAG[rag].text,fontSize:11,fontWeight:600,border:"1px solid "+RAG[rag].border,whiteSpace:"nowrap"}}>
+    <RagDot rag={rag} size={7}/>{RAG[rag].label}
+  </span>
+) : null;
+
+const StatusBadge = ({status}) => {
+  const m={pending:{bg:"#F1F5F9",c:"#64748B",l:"Pending"},acknowledged:{bg:C.greenL,c:C.green,l:"Noted"},pending_quote:{bg:C.amberL,c:C.amber,l:"Quote requested"},in_progress:{bg:C.tealL,c:C.teal,l:"In progress"},complete:{bg:C.greenL,c:C.green,l:"Complete"},scheduled:{bg:C.tealL,c:C.teal,l:"Scheduled"},cancelled:{bg:"#F1F5F9",c:C.mid,l:"Cancelled"}};
+  const s=m[status]||m.pending;
+  return <span style={{padding:"2px 9px",borderRadius:20,background:s.bg,color:s.c,fontSize:11,fontWeight:600}}>{s.l}</span>;
+};
+
+const TypeBadge = ({type}) => {
+  const m={elec:"Electrical",hydro:"Water / Legionella",hvac:"HVAC",misc:"General"};
+  return <span style={{padding:"2px 8px",borderRadius:4,background:"#EFF3F8",color:C.slate,fontSize:11}}>{m[type]||type}</span>;
+};
+
+const Card = ({children,style={},onClick}) => (
+  <div onClick={onClick} style={{background:C.white,border:"1px solid "+C.line,borderRadius:10,padding:16,cursor:onClick?"pointer":"default",...style}}>{children}</div>
+);
+
+const SectionHead = ({title,sub,action,back}) => (
+  <div style={{marginBottom:20}}>
+    {back&&<button onClick={back} style={{background:"none",border:"none",color:C.teal,fontSize:13,cursor:"pointer",padding:"0 0 8px 0",display:"block"}}>← Back</button>}
+    <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between"}}>
+      <div><div style={{fontSize:19,fontWeight:700,color:C.text}}>{title}</div>
+      {sub&&<div style={{fontSize:12,color:C.mid,marginTop:2}}>{sub}</div>}</div>
+      {action}
+    </div>
+  </div>
+);
+
+const Btn = ({children,onClick,variant="primary",small=false,full=false,disabled=false}) => {
+  const s={primary:{background:C.teal,color:C.white,border:"none"},secondary:{background:C.white,color:C.teal,border:"1.5px solid "+C.teal},ghost:{background:"transparent",color:C.mid,border:"1px solid "+C.line},danger:{background:C.red,color:C.white,border:"none"}};
+  return <button onClick={onClick} disabled={disabled} style={{...s[variant],padding:small?"5px 12px":"8px 18px",borderRadius:7,fontSize:small?12:13,fontWeight:600,cursor:disabled?"not-allowed":"pointer",opacity:disabled?.5:1,display:"inline-flex",alignItems:"center",gap:6,width:full?"100%":"auto",justifyContent:full?"center":"flex-start"}}>{children}</button>;
+};
+
+const StatBox = ({label,value,rag,loading}) => (
+  <div style={{textAlign:"center",padding:"12px 0"}}>
+    <div style={{fontSize:28,fontWeight:700,color:rag?RAG[rag].text:C.teal}}>{loading?"…":value}</div>
+    <div style={{fontSize:11,color:C.mid,marginTop:3}}>{label}</div>
+  </div>
+);
+
+const Grid = ({cols=2,children,gap=10}) => (
+  <div style={{display:"grid",gridTemplateColumns:"repeat("+cols+",1fr)",gap}}>{children}</div>
+);
+
+const Spinner = () => (
+  <div style={{textAlign:"center",padding:40,color:C.mid,fontSize:14}}>Loading…</div>
+);
+
+// ── LOGIN ──────────────────────────────────────────────────────────────────
+function Login({onLogin}) {
+  const [email,setEmail]=useState("");
+  const [pass,setPass]=useState("");
+  const [err,setErr]=useState("");
+  const [loading,setLoading]=useState(false);
+
+  const attempt = async () => {
+    if(!email||!pass){setErr("Please enter your email and password.");return;}
+    setErr(""); setLoading(true);
+    const {data,error} = await db.login(email,pass);
+    if(data) onLogin(data);
+    else { setErr("Incorrect email or password."); setLoading(false); }
+  };
+
+  return (
+    <div style={{minHeight:"100vh",background:C.nav,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+      <div style={{background:C.white,borderRadius:16,padding:36,width:"100%",maxWidth:380}}>
+        <div style={{textAlign:"center",marginBottom:28}}>
+          <div style={{fontSize:26,fontWeight:800,color:C.teal,letterSpacing:-1}}>PMS Malta</div>
+          <div style={{fontSize:12,color:C.mid,marginTop:4}}>Preventive Maintenance Services</div>
+        </div>
+        <div style={{marginBottom:14}}>
+          <label style={{fontSize:12,fontWeight:600,color:C.slate,display:"block",marginBottom:6}}>Email</label>
+          <input value={email} onChange={e=>setEmail(e.target.value)} type="email" placeholder="you@example.com"
+            style={{width:"100%",padding:"10px 14px",borderRadius:8,border:"1.5px solid "+C.line,fontSize:14,outline:"none"}}/>
+        </div>
+        <div style={{marginBottom:18}}>
+          <label style={{fontSize:12,fontWeight:600,color:C.slate,display:"block",marginBottom:6}}>Password</label>
+          <input value={pass} onChange={e=>setPass(e.target.value)} type="password" placeholder="••••••••"
+            onKeyDown={e=>e.key==="Enter"&&attempt()}
+            style={{width:"100%",padding:"10px 14px",borderRadius:8,border:"1.5px solid "+C.line,fontSize:14,outline:"none"}}/>
+        </div>
+        {err&&<div style={{marginBottom:12,padding:"8px 12px",background:C.redL,color:C.red,borderRadius:6,fontSize:13}}>{err}</div>}
+        <Btn onClick={attempt} full disabled={loading}>{loading?"Signing in…":"Sign in"}</Btn>
+        <div style={{marginTop:20,fontSize:11,color:C.mid,textAlign:"center"}}>
+          Contact your administrator if you need access.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── ADMIN DASHBOARD ────────────────────────────────────────────────────────
+function AdminDash({setView}) {
+  const [props,setProps]=useState([]);
+  const [findings,setFindings]=useState([]);
+  const [loading,setLoading]=useState(true);
+
+  useEffect(()=>{
+    Promise.all([db.getProperties(), db.getFindings()]).then(([p,f])=>{
+      setProps(p); setFindings(f); setLoading(false);
+    });
+  },[]);
+
+  const reds=findings.filter(f=>f.rag==="red").length;
+  const ambers=findings.filter(f=>f.rag==="amber").length;
+
+  if(loading) return <Spinner/>;
+  return (
+    <div>
+      <SectionHead title="Dashboard" sub="All properties · current status"/>
+      <Grid cols={4} gap={10}>
+        <Card><StatBox label="Properties" value={props.length}/></Card>
+        <Card><StatBox label="Findings" value={findings.length}/></Card>
+        <Card><StatBox label="Urgent" value={reds} rag="red"/></Card>
+        <Card><StatBox label="Amber" value={ambers} rag="amber"/></Card>
+      </Grid>
+      <div style={{height:14}}/>
+      {props.map(p=>(
+        <Card key={p.id} onClick={()=>setView({page:"a_prop",propId:p.id})} style={{marginBottom:12}}>
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
+            <div><div style={{fontWeight:700,fontSize:15}}>{p.name}</div>
+            <div style={{fontSize:12,color:C.mid}}>{p.type} · {p.room_count} rooms</div></div>
+            <RagBadge rag={p.rag}/>
+          </div>
+        </Card>
+      ))}
+      <Card style={{marginTop:4}}>
+        <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>Urgent findings</div>
+        {findings.filter(f=>f.rag==="red").map(f=>(
+          <div key={f.id} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 0",borderBottom:"1px solid "+C.line,flexWrap:"wrap"}}>
+            <RagBadge rag={f.rag}/><TypeBadge type={f.type}/>
+            <span style={{flex:1,fontSize:13}}>{f.title}</span>
+            <StatusBadge status={f.status}/>
+          </div>
+        ))}
+        {findings.filter(f=>f.rag==="red").length===0&&<div style={{fontSize:13,color:C.mid}}>No urgent findings.</div>}
+      </Card>
+    </div>
+  );
+}
+
+function AdminProp({propId,setView}) {
+  const [prop,setProp]=useState(null);
+  const [areas,setAreas]=useState([]);
+  const [findings,setFindings]=useState([]);
+  const [loading,setLoading]=useState(true);
+
+  useEffect(()=>{
+    Promise.all([
+      db.getProperties([propId]),
+      db.getAreas(propId),
+      db.getFindings({propId}),
+    ]).then(([ps,a,f])=>{ setProp(ps[0]); setAreas(a); setFindings(f); setLoading(false); });
+  },[propId]);
+
+  if(loading) return <Spinner/>;
+  if(!prop) return null;
+  return (
+    <div>
+      <SectionHead title={prop.name} sub={prop.address} action={<RagBadge rag={prop.rag}/>} back={()=>setView({page:"a_dash"})}/>
+      <Grid cols={4} gap={10}>
+        <Card><StatBox label="Findings" value={findings.length}/></Card>
+        <Card><StatBox label="Urgent" value={findings.filter(f=>f.rag==="red").length} rag="red"/></Card>
+        <Card><StatBox label="Amber" value={findings.filter(f=>f.rag==="amber").length} rag="amber"/></Card>
+        <Card><StatBox label="Areas" value={areas.length}/></Card>
+      </Grid>
+      <div style={{fontWeight:700,fontSize:14,margin:"16px 0 10px"}}>Areas</div>
+      <Grid cols={2} gap={10}>
+        {areas.map(a=>(
+          <Card key={a.id} onClick={()=>setView({page:"a_area",propId,areaId:a.id})}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <span style={{fontSize:22}}>{a.icon}</span><RagBadge rag={a.rag}/>
+            </div>
+            <div style={{fontWeight:600,fontSize:14,marginTop:8}}>{a.name}</div>
+            <div style={{fontSize:11,color:C.mid,marginTop:4}}>{findings.filter(f=>f.area_id===a.id).length} findings</div>
+          </Card>
+        ))}
+      </Grid>
+    </div>
+  );
+}
+
+function AdminArea({propId,areaId,setView}) {
+  const [prop,setProp]=useState(null);
+  const [area,setArea]=useState(null);
+  const [rooms,setRooms]=useState([]);
+  const [findings,setFindings]=useState([]);
+  const [visits,setVisits]=useState([]);
+  const [loading,setLoading]=useState(true);
+
+  useEffect(()=>{
+    Promise.all([
+      db.getProperties([propId]),
+      db.getAreas(propId),
+      db.getRooms(propId,areaId),
+      db.getFindings({propId,areaId}),
+      db.getVisits(propId),
+    ]).then(([ps,areas,r,f,v])=>{
+      setProp(ps[0]); setArea(areas.find(a=>a.id===areaId));
+      setRooms(r); setFindings(f); setVisits(v); setLoading(false);
+    });
+  },[propId,areaId]);
+
+  if(loading) return <Spinner/>;
+  if(!prop||!area) return null;
+  return (
+    <div>
+      <SectionHead title={area.icon+" "+area.name} sub={prop.name} action={<RagBadge rag={area.rag}/>} back={()=>setView({page:"a_prop",propId})}/>
+      {rooms.length>0&&(
+        <><div style={{fontWeight:700,fontSize:14,marginBottom:10}}>Rooms</div>
+        <Grid cols={3} gap={8}>
+          {rooms.map(r=>(
+            <Card key={r.id} onClick={()=>setView({page:"a_room",propId,areaId,roomId:r.id})} style={{padding:12}}>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{fontWeight:700,fontSize:13}}>{r.name}</span><RagDot rag={r.rag} size={10}/></div>
+              <div style={{fontSize:11,color:C.mid}}>{r.sub_name}</div>
+            </Card>
+          ))}
+        </Grid><div style={{height:16}}/></>
+      )}
+      <Grid cols={1} gap={12}>
+        <Card>
+          <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>Findings</div>
+          {findings.length?findings.map(f=>(
+            <div key={f.id} style={{padding:"9px 0",borderBottom:"1px solid "+C.line}}>
+              <div style={{display:"flex",gap:8,marginBottom:4}}><RagBadge rag={f.rag}/><TypeBadge type={f.type}/></div>
+              <div style={{fontSize:13,marginBottom:4}}>{f.title}</div>
+              <StatusBadge status={f.status}/>
+            </div>
+          )):<div style={{fontSize:13,color:C.mid}}>No findings.</div>}
+        </Card>
+        <Card>
+          <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>Audit trail</div>
+          {visits.map(v=>(
+            <div key={v.id} style={{padding:"9px 0",borderBottom:"1px solid "+C.line}}>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{fontSize:13,fontWeight:600}}>{v.date}</span><span style={{fontSize:11,color:C.mid}}>{v.tech_name}</span></div>
+              <div style={{display:"flex",gap:2,marginBottom:3}}>
+                {Array(v.green_count||0).fill(0).map((_,i)=><span key={i} style={{width:7,height:7,borderRadius:"50%",background:C.green,display:"inline-block"}}/>)}
+                {Array(v.amber_count||0).fill(0).map((_,i)=><span key={i} style={{width:7,height:7,borderRadius:"50%",background:C.amber,display:"inline-block"}}/>)}
+                {Array(v.red_count||0).fill(0).map((_,i)=><span key={i} style={{width:7,height:7,borderRadius:"50%",background:C.red,display:"inline-block"}}/>)}
+              </div>
+              <div style={{fontSize:11,color:C.mid}}>{v.green_count||0} good · {v.amber_count||0} amber · {v.red_count||0} urgent</div>
+            </div>
+          ))}
+          {visits.length===0&&<div style={{fontSize:13,color:C.mid}}>No visits yet.</div>}
+        </Card>
+      </Grid>
+    </div>
+  );
+}
+
+function AdminRoom({propId,areaId,roomId,setView}) {
+  const [prop,setProp]=useState(null);
+  const [area,setArea]=useState(null);
+  const [room,setRoom]=useState(null);
+  const [findings,setFindings]=useState([]);
+  const [visits,setVisits]=useState([]);
+  const [loading,setLoading]=useState(true);
+
+  useEffect(()=>{
+    Promise.all([
+      db.getProperties([propId]),
+      db.getAreas(propId),
+      db.getRooms(propId,areaId),
+      db.getFindings({propId,roomId}),
+      db.getVisits(propId),
+    ]).then(([ps,areas,rooms,f,v])=>{
+      setProp(ps[0]); setArea(areas.find(a=>a.id===areaId));
+      setRoom(rooms.find(r=>r.id===roomId));
+      setFindings(f); setVisits(v); setLoading(false);
+    });
+  },[propId,areaId,roomId]);
+
+  if(loading) return <Spinner/>;
+  if(!prop||!area||!room) return null;
+  return (
+    <div>
+      <SectionHead title={room.name} sub={room.sub_name+" · "+area.name+" · "+prop.name} action={<RagBadge rag={room.rag}/>} back={()=>setView({page:"a_area",propId,areaId})}/>
+      <Grid cols={1} gap={12}>
+        <Card>
+          <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>Findings</div>
+          {findings.length?findings.map(f=>(
+            <div key={f.id} style={{padding:"9px 0",borderBottom:"1px solid "+C.line}}>
+              <div style={{display:"flex",gap:8,marginBottom:4}}><RagBadge rag={f.rag}/><TypeBadge type={f.type}/></div>
+              <div style={{fontSize:13,marginBottom:4}}>{f.title}</div>
+              <StatusBadge status={f.status}/>
+            </div>
+          )):<div style={{fontSize:13,color:C.mid,padding:"12px 0"}}>No findings for this room.</div>}
+        </Card>
+        <Card>
+          <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>Room audit trail</div>
+          {visits.map(v=>(
+            <div key={v.id} style={{padding:"9px 0",borderBottom:"1px solid "+C.line}}>
+              <div style={{display:"flex",justifyContent:"space-between"}}><span style={{fontSize:13,fontWeight:600}}>{v.date}</span><StatusBadge status="complete"/></div>
+              <div style={{fontSize:11,color:C.mid,marginTop:2}}>Inspected by {v.tech_name}</div>
+            </div>
+          ))}
+          {visits.length===0&&<div style={{fontSize:13,color:C.mid}}>No visits yet.</div>}
+        </Card>
+      </Grid>
+    </div>
+  );
+}
+
+function AdminCal({setView}) {
+  const [month,setMonth]=useState(7);
+  const [schedule,setSchedule]=useState([]);
+  const year=2026;
+  const months=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+  useEffect(()=>{ db.getSchedule().then(setSchedule); },[]);
+
+  const firstDay=new Date(year,month,1).getDay();
+  const daysInMonth=new Date(year,month+1,0).getDate();
+  const cells=Array.from({length:firstDay+daysInMonth},(_,i)=>i<firstDay?null:i-firstDay+1);
+  const getV=(d)=>{
+    if(!d) return [];
+    const ds=year+"-"+String(month+1).padStart(2,"0")+"-"+String(d).padStart(2,"0");
+    return schedule.filter(s=>s.date===ds);
+  };
+
+  return (
+    <div>
+      <SectionHead title="Schedule calendar" sub="Visit schedule across all properties"/>
+      <Card style={{marginBottom:16}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+          <Btn variant="ghost" small onClick={()=>setMonth(m=>Math.max(0,m-1))}>← Prev</Btn>
+          <div style={{fontWeight:700,fontSize:15}}>{months[month]} {year}</div>
+          <Btn variant="ghost" small onClick={()=>setMonth(m=>Math.min(11,m+1))}>Next →</Btn>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2,marginBottom:6}}>
+          {["S","M","T","W","T","F","S"].map((d,i)=><div key={i} style={{textAlign:"center",fontSize:11,fontWeight:700,color:C.mid,padding:"4px 0"}}>{d}</div>)}
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3}}>
+          {cells.map((day,i)=>{
+            const vs=getV(day);
+            return <div key={i} style={{minHeight:52,padding:3,borderRadius:5,background:vs.length?"#E6F5ED":"transparent",border:"1px solid "+(vs.length?C.green:C.line)}}>
+              {day&&<><div style={{fontSize:11,color:C.slate,fontWeight:vs.length?700:400}}>{day}</div>
+              {vs.map(v=><div key={v.id} style={{fontSize:8,background:C.teal,color:C.white,borderRadius:2,padding:"1px 3px",marginTop:2,lineHeight:1.4}}>{v.prop_name?.split(" ")[0].slice(0,6)}</div>)}</>}
+            </div>;
+          })}
+        </div>
+      </Card>
+      <Card>
+        <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>Scheduled visits</div>
+        {schedule.map(s=>(
+          <div key={s.id} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 0",borderBottom:"1px solid "+C.line}}>
+            <div style={{minWidth:86,fontSize:12,fontWeight:600,color:C.teal}}>{s.date}</div>
+            <div style={{flex:1}}><div style={{fontSize:13,fontWeight:600}}>{s.prop_name}</div><div style={{fontSize:11,color:C.mid}}>{s.group_name} · {s.tech_name}</div></div>
+            <StatusBadge status={s.status}/>
+          </div>
+        ))}
+        <div style={{marginTop:14}}><Btn variant="primary">+ Add visit</Btn></div>
+      </Card>
+    </div>
+  );
+}
+
+function AdminTasks() {
+  const [tasks,setTasks]=useState([]);
+  const [loading,setLoading]=useState(true);
+  useEffect(()=>{ db.getTasks().then(t=>{setTasks(t);setLoading(false);}); },[]);
+  if(loading) return <Spinner/>;
+  return (
+    <div>
+      <SectionHead title="Task library" action={<Btn variant="primary" small>+ New task</Btn>}/>
+      {tasks.map(t=>(
+        <Card key={t.id} style={{marginBottom:8}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
+            <div style={{display:"flex",gap:8,alignItems:"center"}}><span style={{fontSize:11,fontWeight:700,color:C.teal,minWidth:36}}>{t.ref}</span><span style={{fontSize:14,fontWeight:600}}>{t.name}</span></div>
+            <TypeBadge type={t.type}/>
+          </div>
+          <div style={{fontSize:12,color:C.mid,marginBottom:8}}>{t.description}</div>
+          <div style={{display:"flex",gap:12,fontSize:11,color:C.mid,flexWrap:"wrap"}}>
+            <span>Frequency: <b style={{color:C.teal}}>{t.frequency}</b></span>
+            <span>Grade: <b style={{color:t.grade==="Licensed"?C.amber:C.mid}}>{t.grade}</b></span>
+            <span>Photo: <b style={{color:t.photo_required?C.teal:C.mid}}>{t.photo_required?"Required":"Optional"}</b></span>
+          </div>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+function AdminFindings() {
+  const [findings,setFindings]=useState([]);
+  const [loading,setLoading]=useState(true);
+  useEffect(()=>{ db.getFindings().then(f=>{setFindings(f);setLoading(false);}); },[]);
+  if(loading) return <Spinner/>;
+  return (
+    <div>
+      <SectionHead title="All findings" sub="Across all properties"/>
+      {findings.map(f=>(
+        <Card key={f.id} style={{marginBottom:8}}>
+          <div style={{display:"flex",gap:8,marginBottom:6,flexWrap:"wrap",alignItems:"center"}}><RagBadge rag={f.rag}/><TypeBadge type={f.type}/><span style={{fontSize:11,fontWeight:700,color:C.teal}}>{f.ref}</span><span style={{marginLeft:"auto",fontSize:11,color:C.mid}}>{f.date}</span></div>
+          <div style={{fontSize:13,marginBottom:6}}>{f.title}</div>
+          <StatusBadge status={f.status}/>
+        </Card>
+      ))}
+      {findings.length===0&&<Card><div style={{textAlign:"center",padding:32,color:C.mid}}>No findings yet.</div></Card>}
+    </div>
+  );
+}
+
+// ── TECH PORTAL ────────────────────────────────────────────────────────────
+function TechDash({user,setView}) {
+  const [schedule,setSchedule]=useState([]);
+  const [loading,setLoading]=useState(true);
+  useEffect(()=>{ db.getSchedule(user.id).then(s=>{setSchedule(s);setLoading(false);}); },[user.id]);
+  if(loading) return <Spinner/>;
+  return (
+    <div>
+      <SectionHead title="My visits" sub={user.name+" · upcoming assignments"}/>
+      {schedule.length===0&&<Card><div style={{textAlign:"center",padding:32,color:C.mid}}>No visits assigned. Contact admin.</div></Card>}
+      {schedule.map((s,i)=>(
+        <Card key={s.id} style={{marginBottom:12,display:"flex",alignItems:"center",gap:14}}>
+          <div style={{minWidth:72,textAlign:"center",padding:"8px 0",background:C.tealL,borderRadius:8}}>
+            <div style={{fontSize:10,fontWeight:700,color:C.teal}}>{s.date?.split("-")[1]}</div>
+            <div style={{fontSize:22,fontWeight:700,color:C.teal}}>{s.date?.split("-")[2]}</div>
+          </div>
+          <div style={{flex:1}}>
+            <div style={{fontSize:14,fontWeight:700}}>{s.prop_name}</div>
+            <div style={{fontSize:12,color:C.mid}}>{s.group_name}</div>
+            <div style={{fontSize:11,color:C.mid}}>{s.task_count} tasks</div>
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:6,alignItems:"flex-end"}}>
+            <StatusBadge status={s.status}/>
+            {s.status==="scheduled"&&<Btn onClick={()=>setView({page:"t_cat",schedId:s.id,propId:s.prop_id,propName:s.prop_name,techId:user.id,techName:user.name})} small>Start →</Btn>}
+          </div>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+function TechCat({propId,propName,schedId,techId,techName,setView}) {
+  const [areas,setAreas]=useState([]);
+  const [tasks,setTasks]=useState([]);
+  const [loading,setLoading]=useState(true);
+  useEffect(()=>{ Promise.all([db.getAreas(propId),db.getTasks()]).then(([a,t])=>{setAreas(a);setTasks(t);setLoading(false);}); },[propId]);
+  if(loading) return <Spinner/>;
+  return (
+    <div>
+      <SectionHead title={propName} back={()=>setView({page:"t_dash"})}/>
+      <div style={{fontWeight:600,fontSize:14,color:C.mid,marginBottom:12}}>Select area to inspect</div>
+      <Grid cols={2} gap={10}>
+        {areas.map(a=>(
+          <Card key={a.id} onClick={()=>setView({page:"t_area",schedId,propId,propName,areaId:a.id,areaName:a.name,areaIcon:a.icon,hasRooms:a.has_rooms,techId,techName})} style={{display:"flex",gap:12,alignItems:"center"}}>
+            <span style={{fontSize:24}}>{a.icon}</span>
+            <div><div style={{fontWeight:600,fontSize:14}}>{a.name}</div><div style={{fontSize:11,color:C.mid}}>{tasks.length} tasks</div></div>
+          </Card>
+        ))}
+      </Grid>
+    </div>
+  );
+}
+
+function TechArea({propId,propName,schedId,areaId,areaName,areaIcon,hasRooms,techId,techName,setView}) {
+  const [rooms,setRooms]=useState([]);
+  const [loading,setLoading]=useState(true);
+  useEffect(()=>{ db.getRooms(propId,areaId).then(r=>{setRooms(r);setLoading(false);}); },[propId,areaId]);
+  if(loading) return <Spinner/>;
+  return (
+    <div>
+      <SectionHead title={areaIcon+" "+areaName} sub={propName} back={()=>setView({page:"t_cat",schedId,propId,propName,techId,techName})}/>
+      {hasRooms&&rooms.length>0?(
+        <><div style={{fontWeight:600,fontSize:14,color:C.mid,marginBottom:12}}>Select room</div>
+        <Grid cols={2} gap={10}>
+          {rooms.map(r=>(
+            <Card key={r.id} onClick={()=>setView({page:"t_check",schedId,propId,propName,areaId,areaName,areaIcon,roomId:r.id,roomName:r.name,techId,techName})}>
+              <div style={{fontWeight:700,fontSize:14}}>{r.name}</div>
+              <div style={{fontSize:11,color:C.mid}}>{r.sub_name}</div>
+            </Card>
+          ))}
+        </Grid></>
+      ):(
+        <Btn onClick={()=>setView({page:"t_check",schedId,propId,propName,areaId,areaName,areaIcon,roomId:null,roomName:null,techId,techName})}>Start area checklist →</Btn>
+      )}
+    </div>
+  );
+}
+
+function TechCheck({schedId,propId,propName,areaId,areaName,areaIcon,roomId,roomName,techId,techName,setView}) {
+  const [tasks,setTasks]=useState([]);
+  const [ts,setTs]=useState({});
+  const [submitted,setSubmitted]=useState(false);
+  const [submitting,setSubmitting]=useState(false);
+  useEffect(()=>{ db.getTasks().then(setTasks); },[]);
+
+  const set=(id,field,val)=>setTs(prev=>({...prev,[id]:{...(prev[id]||{}),[field]:val}}));
+  const completed=Object.keys(ts).filter(id=>ts[id]?.rag).length;
+
+  const submit = async () => {
+    setSubmitting(true);
+    const results = tasks.map(t=>({
+      ref: t.ref, name: t.name, type: t.type,
+      rag: ts[t.id]?.rag||"green",
+      note: ts[t.id]?.note||"",
+      photo: ts[t.id]?.photo||false,
+    }));
+    await db.submitVisit({schedId,propId,areaId,roomId,techId,techName},results);
+    setSubmitted(true); setSubmitting(false);
+  };
+
+  if(submitted) return (
+    <Card style={{textAlign:"center",padding:40}}>
+      <div style={{fontSize:40,marginBottom:12}}>✅</div>
+      <div style={{fontSize:20,fontWeight:700,color:C.green,marginBottom:8}}>Submitted</div>
+      <div style={{fontSize:13,color:C.mid,marginBottom:24}}>Results saved. Red findings flagged to owner.</div>
+      <Btn onClick={()=>setView({page:"t_area",schedId,propId,propName,areaId,areaName,areaIcon,hasRooms:!!roomId,techId,techName})}>Back to areas</Btn>
+    </Card>
+  );
+
+  return (
+    <div>
+      <SectionHead title={roomName||areaName} sub={propName+" · "+completed+"/"+tasks.length+" complete"} back={()=>setView({page:"t_area",schedId,propId,propName,areaId,areaName,areaIcon,hasRooms:!!roomId,techId,techName})}/>
+      <div style={{marginBottom:14,padding:"10px 14px",background:C.tealL,borderRadius:8,fontSize:13,color:C.teal}}>Rate each task and photograph where required.</div>
+      {tasks.map(task=>{
+        const t=ts[task.id]||{};
+        return (
+          <Card key={task.id} style={{marginBottom:10,borderLeft:"4px solid "+(t.rag?RAG[t.rag].border:C.line)}}>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+              <div style={{display:"flex",gap:8,alignItems:"center"}}><span style={{fontSize:11,fontWeight:700,color:C.teal,minWidth:36}}>{task.ref}</span><span style={{fontSize:14,fontWeight:600}}>{task.name}</span></div>
+              <TypeBadge type={task.type}/>
+            </div>
+            <div style={{fontSize:12,color:C.mid,marginBottom:10}}>{task.description}</div>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+              {["green","amber","red"].map(r=>(
+                <button key={r} onClick={()=>set(task.id,"rag",r)} style={{padding:"4px 14px",borderRadius:20,border:"1.5px solid "+(t.rag===r?RAG[r].border:C.line),background:t.rag===r?RAG[r].bg:C.white,color:t.rag===r?RAG[r].text:C.mid,fontSize:12,fontWeight:600,cursor:"pointer"}}>
+                  {RAG[r].label}
+                </button>
+              ))}
+              {task.photo_required&&(
+                <button onClick={()=>set(task.id,"photo",!t.photo)} style={{marginLeft:"auto",padding:"4px 12px",borderRadius:7,border:"1.5px solid "+(t.photo?C.teal:C.line),background:t.photo?C.tealL:C.white,color:t.photo?C.teal:C.mid,fontSize:12,cursor:"pointer"}}>
+                  {t.photo?"📷 Taken":"📷 Photo"}
+                </button>
+              )}
+            </div>
+            {t.rag&&t.rag!=="green"&&(
+              <textarea placeholder="Describe the finding…" rows={2} value={t.note||""} onChange={e=>set(task.id,"note",e.target.value)}
+                style={{marginTop:10,width:"100%",padding:8,border:"1px solid "+C.line,borderRadius:6,fontSize:13,resize:"vertical",fontFamily:"inherit",boxSizing:"border-box"}}/>
+            )}
+          </Card>
+        );
+      })}
+      <div style={{marginTop:16,display:"flex",gap:10}}>
+        <Btn onClick={submit} disabled={submitting}>{submitting?"Saving…":"Submit ("+completed+"/"+tasks.length+")"}</Btn>
+        <Btn variant="secondary">Save draft</Btn>
+      </div>
+    </div>
+  );
+}
+
+// ── OWNER PORTAL ────────────────────────────────────────────────────────────
+function OwnerDash({user,setView}) {
+  const [props,setProps]=useState([]);
+  const [findings,setFindings]=useState([]);
+  const [loading,setLoading]=useState(true);
+
+  useEffect(()=>{
+    const ids=user.prop_ids||[];
+    Promise.all([db.getProperties(ids),db.getFindings({propIds:ids})]).then(([p,f])=>{
+      setProps(p); setFindings(f); setLoading(false);
+    });
+  },[user.id]);
+
+  if(loading) return <Spinner/>;
+  const open=findings.filter(f=>f.status==="pending"||f.status==="pending_quote").length;
+  return (
+    <div>
+      <SectionHead title={"Welcome, "+user.name.split(" ")[0]} sub="Your portfolio"/>
+      <Grid cols={4} gap={10}>
+        <Card><StatBox label="Properties" value={props.length}/></Card>
+        <Card><StatBox label="Open items" value={open}/></Card>
+        <Card><StatBox label="Urgent" value={findings.filter(f=>f.rag==="red").length} rag="red"/></Card>
+        <Card><StatBox label="Amber" value={findings.filter(f=>f.rag==="amber").length} rag="amber"/></Card>
+      </Grid>
+      <div style={{height:14}}/>
+      {props.map(p=>(
+        <Card key={p.id} onClick={()=>setView({page:"o_prop",propId:p.id})} style={{marginBottom:12}}>
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:10}}>
+            <div><div style={{fontWeight:700,fontSize:15}}>{p.name}</div><div style={{fontSize:12,color:C.mid}}>{p.address}</div></div>
+            <RagBadge rag={p.rag}/>
+          </div>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+function OwnerProp({user,propId,setView}) {
+  const [prop,setProp]=useState(null);
+  const [areas,setAreas]=useState([]);
+  const [findings,setFindings]=useState([]);
+  const [loading,setLoading]=useState(true);
+
+  useEffect(()=>{
+    if(!user.prop_ids?.includes(propId)){setLoading(false);return;}
+    Promise.all([db.getProperties([propId]),db.getAreas(propId),db.getFindings({propId})]).then(([ps,a,f])=>{
+      setProp(ps[0]); setAreas(a); setFindings(f); setLoading(false);
+    });
+  },[propId]);
+
+  if(loading) return <Spinner/>;
+  if(!prop) return <Card><div style={{color:C.mid,padding:32,textAlign:"center"}}>Property not found.</div></Card>;
+  return (
+    <div>
+      <SectionHead title={prop.name} sub={prop.address} action={<RagBadge rag={prop.rag}/>} back={()=>setView({page:"o_dash"})}/>
+      <Grid cols={4} gap={10}>
+        <Card><StatBox label="Findings" value={findings.length}/></Card>
+        <Card><StatBox label="Urgent" value={findings.filter(f=>f.rag==="red").length} rag="red"/></Card>
+        <Card><StatBox label="Amber" value={findings.filter(f=>f.rag==="amber").length} rag="amber"/></Card>
+        <Card><StatBox label="Areas" value={areas.length}/></Card>
+      </Grid>
+      <div style={{fontWeight:700,fontSize:14,margin:"16px 0 10px"}}>Select area</div>
+      <Grid cols={2} gap={10}>
+        {areas.map(a=>(
+          <Card key={a.id} onClick={()=>setView({page:"o_area",propId,areaId:a.id})}>
+            <div style={{display:"flex",justifyContent:"space-between"}}><span style={{fontSize:22}}>{a.icon}</span><RagBadge rag={a.rag}/></div>
+            <div style={{fontWeight:600,fontSize:14,marginTop:8}}>{a.name}</div>
+            <div style={{fontSize:11,color:C.mid,marginTop:4}}>{findings.filter(f=>f.area_id===a.id).length} findings</div>
+          </Card>
+        ))}
+      </Grid>
+    </div>
+  );
+}
+
+function OwnerArea({user,propId,areaId,setView}) {
+  const [prop,setProp]=useState(null);
+  const [area,setArea]=useState(null);
+  const [rooms,setRooms]=useState([]);
+  const [findings,setFindings]=useState([]);
+  const [visits,setVisits]=useState([]);
+  const [states,setStates]=useState({});
+  const [exp,setExp]=useState(false);
+  const [loading,setLoading]=useState(true);
+
+  useEffect(()=>{
+    Promise.all([db.getProperties([propId]),db.getAreas(propId),db.getRooms(propId,areaId),db.getFindings({propId,areaId}),db.getVisits(propId)]).then(([ps,areas,r,f,v])=>{
+      setProp(ps[0]); setArea(areas.find(a=>a.id===areaId)); setRooms(r); setFindings(f); setVisits(v); setLoading(false);
+    });
+  },[propId,areaId]);
+
+  const act=async(id,val)=>{
+    setStates(prev=>({...prev,[id]:val}));
+    await db.updateFinding(id,{status:val==="quote"?"pending_quote":"acknowledged"});
+  };
+
+  if(loading) return <Spinner/>;
+  if(!prop||!area) return null;
+  return (
+    <div>
+      <SectionHead title={area.icon+" "+area.name} sub={prop.name} action={<RagBadge rag={area.rag}/>} back={()=>setView({page:"o_prop",propId})}/>
+      {rooms.length>0&&(
+        <><div style={{fontWeight:700,fontSize:14,marginBottom:10}}>Rooms</div>
+        <Grid cols={2} gap={8}>
+          {rooms.map(r=><Card key={r.id} onClick={()=>setView({page:"o_room",propId,areaId,roomId:r.id})}>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{fontWeight:700,fontSize:14}}>{r.name}</span><RagBadge rag={r.rag}/></div>
+            <div style={{fontSize:11,color:C.mid}}>{r.sub_name}</div>
+          </Card>)}
+        </Grid><div style={{height:14}}/></>
+      )}
+      <Grid cols={1} gap={12}>
+        <Card>
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:12}}>
+            <div style={{fontWeight:700,fontSize:14}}>Findings</div>
+            <Btn variant="secondary" small onClick={()=>setExp(!exp)}>Export ↓</Btn>
+          </div>
+          {exp&&<div style={{marginBottom:12,padding:12,background:C.bg,borderRadius:8}}>
+            <div style={{fontSize:12,fontWeight:600,marginBottom:8}}>Export as Excel</div>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+              {["By visit date","By finding type","By service type","By RAG status"].map(o=><Btn key={o} variant="ghost" small onClick={()=>setExp(false)}>{o}</Btn>)}
+            </div>
+          </div>}
+          {findings.map(f=>{
+            const s=states[f.id];
+            return <div key={f.id} style={{padding:"10px 0",borderBottom:"1px solid "+C.line}}>
+              <div style={{display:"flex",gap:8,marginBottom:6,flexWrap:"wrap"}}><RagBadge rag={f.rag}/><TypeBadge type={f.type}/></div>
+              <div style={{fontSize:13,marginBottom:8}}>{f.title}</div>
+              {!s?<div style={{display:"flex",gap:8}}>
+                <Btn small variant="ghost" onClick={()=>act(f.id,"ack")}>Noted — keep as is</Btn>
+                <Btn small variant="secondary" onClick={()=>act(f.id,"quote")}>Request quote</Btn>
+              </div>:<div style={{padding:"6px 10px",borderRadius:6,background:s==="quote"?C.amberL:C.greenL,color:s==="quote"?C.amber:C.green,fontSize:12,fontWeight:600}}>
+                {s==="quote"?"✓ Quote requested — PMS Malta will respond":"✓ Acknowledged"}
+              </div>}
+            </div>;
+          })}
+          {findings.length===0&&<div style={{fontSize:13,color:C.mid}}>No findings in this area.</div>}
+        </Card>
+        <Card>
+          <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>Audit trail</div>
+          {visits.map(v=>(
+            <div key={v.id} style={{padding:"9px 0",borderBottom:"1px solid "+C.line}}>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{fontSize:13,fontWeight:600}}>{v.date}</span><span style={{fontSize:11,color:C.mid}}>{v.tech_name}</span></div>
+              <div style={{display:"flex",gap:2,marginBottom:3}}>
+                {Array(v.green_count||0).fill(0).map((_,i)=><span key={i} style={{width:7,height:7,borderRadius:"50%",background:C.green,display:"inline-block"}}/>)}
+                {Array(v.amber_count||0).fill(0).map((_,i)=><span key={i} style={{width:7,height:7,borderRadius:"50%",background:C.amber,display:"inline-block"}}/>)}
+                {Array(v.red_count||0).fill(0).map((_,i)=><span key={i} style={{width:7,height:7,borderRadius:"50%",background:C.red,display:"inline-block"}}/>)}
+              </div>
+              <div style={{fontSize:11,color:C.mid}}>{v.green_count||0} good · {v.amber_count||0} amber · {v.red_count||0} urgent</div>
+            </div>
+          ))}
+          {visits.length===0&&<div style={{fontSize:13,color:C.mid}}>No visits yet.</div>}
+          <div style={{marginTop:12}}><Btn variant="secondary" small>Export Excel ↓</Btn></div>
+        </Card>
+      </Grid>
+    </div>
+  );
+}
+
+function OwnerRoom({user,propId,areaId,roomId,setView}) {
+  const [prop,setProp]=useState(null);
+  const [area,setArea]=useState(null);
+  const [room,setRoom]=useState(null);
+  const [findings,setFindings]=useState([]);
+  const [visits,setVisits]=useState([]);
+  const [states,setStates]=useState({});
+  const [loading,setLoading]=useState(true);
+
+  useEffect(()=>{
+    Promise.all([db.getProperties([propId]),db.getAreas(propId),db.getRooms(propId,areaId),db.getFindings({propId,roomId}),db.getVisits(propId)]).then(([ps,areas,rooms,f,v])=>{
+      setProp(ps[0]); setArea(areas.find(a=>a.id===areaId)); setRoom(rooms.find(r=>r.id===roomId));
+      setFindings(f); setVisits(v); setLoading(false);
+    });
+  },[propId,areaId,roomId]);
+
+  const act=async(id,val)=>{
+    setStates(prev=>({...prev,[id]:val}));
+    await db.updateFinding(id,{status:val==="quote"?"pending_quote":"acknowledged"});
+  };
+
+  if(loading) return <Spinner/>;
+  if(!prop||!area||!room) return null;
+  return (
+    <div>
+      <SectionHead title={room.name} sub={room.sub_name+" · "+area.name+" · "+prop.name} action={<RagBadge rag={room.rag}/>} back={()=>setView({page:"o_area",propId,areaId})}/>
+      <Grid cols={1} gap={12}>
+        <Card>
+          <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>Findings in {room.name}</div>
+          {findings.map(f=>{
+            const s=states[f.id];
+            return <div key={f.id} style={{padding:"10px 0",borderBottom:"1px solid "+C.line}}>
+              <div style={{display:"flex",gap:8,marginBottom:6}}><RagBadge rag={f.rag}/><TypeBadge type={f.type}/></div>
+              <div style={{fontSize:13,marginBottom:8}}>{f.title}</div>
+              {!s?<div style={{display:"flex",gap:8}}>
+                <Btn small variant="ghost" onClick={()=>act(f.id,"ack")}>Noted — keep as is</Btn>
+                <Btn small variant="secondary" onClick={()=>act(f.id,"quote")}>Request quote</Btn>
+              </div>:<div style={{padding:"6px 10px",borderRadius:6,background:s==="quote"?C.amberL:C.greenL,color:s==="quote"?C.amber:C.green,fontSize:12,fontWeight:600}}>
+                {s==="quote"?"✓ Quote requested":"✓ Acknowledged"}
+              </div>}
+            </div>;
+          })}
+          {findings.length===0&&<div style={{fontSize:13,color:C.mid,padding:"12px 0"}}>No findings for this room.</div>}
+        </Card>
+        <Card>
+          <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>Room audit trail</div>
+          {visits.map(v=>(
+            <div key={v.id} style={{padding:"9px 0",borderBottom:"1px solid "+C.line}}>
+              <div style={{display:"flex",justifyContent:"space-between"}}><span style={{fontSize:13,fontWeight:600}}>{v.date}</span><StatusBadge status="complete"/></div>
+              <div style={{fontSize:11,color:C.mid,marginTop:2}}>Inspected by {v.tech_name}</div>
+            </div>
+          ))}
+          {visits.length===0&&<div style={{fontSize:13,color:C.mid}}>No visits yet.</div>}
+          <div style={{marginTop:12}}><Btn variant="secondary" small>Export Excel ↓</Btn></div>
+        </Card>
+      </Grid>
+    </div>
+  );
+}
+
+function OwnerPending({user}) {
+  const [findings,setFindings]=useState([]);
+  const [props,setProps]=useState([]);
+  const [areas,setAreas]=useState([]);
+  const [states,setStates]=useState({});
+  const [loading,setLoading]=useState(true);
+
+  useEffect(()=>{
+    const ids=user.prop_ids||[];
+    Promise.all([db.getFindings({propIds:ids}),db.getProperties(ids)]).then(async([f,p])=>{
+      const pending=f.filter(x=>x.status==="pending"||x.status==="pending_quote");
+      setFindings(pending); setProps(p);
+      const allAreas=[];
+      for(const prop of p){ const a=await db.getAreas(prop.id); allAreas.push(...a); }
+      setAreas(allAreas); setLoading(false);
+    });
+  },[user.id]);
+
+  const act=async(id,val)=>{
+    setStates(prev=>({...prev,[id]:val}));
+    await db.updateFinding(id,{status:val==="quote"?"pending_quote":"acknowledged"});
+  };
+
+  if(loading) return <Spinner/>;
+  return (
+    <div>
+      <SectionHead title="Pending tasks" sub="All items awaiting your decision"/>
+      {findings.length===0&&<Card><div style={{textAlign:"center",padding:32,color:C.mid}}>All clear — no pending tasks.</div></Card>}
+      {findings.map(f=>{
+        const prop=props.find(p=>p.id===f.prop_id), area=areas.find(a=>a.id===f.area_id), s=states[f.id];
+        return <Card key={f.id} style={{marginBottom:10}}>
+          <div style={{display:"flex",gap:8,marginBottom:8,flexWrap:"wrap",alignItems:"center"}}><RagBadge rag={f.rag}/><TypeBadge type={f.type}/><span style={{fontSize:11,color:C.mid}}>{prop?.name} › {area?.name}</span><span style={{marginLeft:"auto",fontSize:11,color:C.mid}}>{f.date}</span></div>
+          <div style={{fontSize:14,fontWeight:600,marginBottom:10}}>{f.title}</div>
+          {!s?<div style={{display:"flex",gap:8}}>
+            <Btn small variant="ghost" onClick={()=>act(f.id,"ack")}>Noted — keep as is</Btn>
+            <Btn small variant="secondary" onClick={()=>act(f.id,"quote")}>Request quote</Btn>
+          </div>:<div style={{padding:"8px 12px",borderRadius:6,background:s==="quote"?C.amberL:C.greenL,color:s==="quote"?C.amber:C.green,fontSize:12,fontWeight:600}}>
+            {s==="quote"?"✓ Quote requested — PMS Malta will respond":"✓ Noted and acknowledged"}
+          </div>}
+        </Card>;
+      })}
+    </div>
+  );
+}
+
+function OwnerReports() {
+  return (
+    <div>
+      <SectionHead title="Monthly reports" sub="PPM reports and invoices"/>
+      {[{month:"July 2026",visits:2,done:43,amber:10,red:5,status:"pending",invoice:"€400"},{month:"June 2026",visits:2,done:44,amber:7,red:1,status:"complete",invoice:"€400"},{month:"May 2026",visits:2,done:44,amber:3,red:0,status:"complete",invoice:"€400"}].map(r=>(
+        <Card key={r.month} style={{marginBottom:12}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+            <div style={{fontSize:16,fontWeight:700}}>{r.month}</div>
+            <div style={{display:"flex",gap:8,alignItems:"center"}}><StatusBadge status={r.status}/><span style={{fontWeight:700,color:C.teal}}>{r.invoice}</span></div>
+          </div>
+          <div style={{display:"flex",gap:16,fontSize:12,color:C.mid,marginBottom:12,flexWrap:"wrap"}}>
+            <span>{r.visits} visits</span><span style={{color:C.green}}>✓ {r.done} done</span><span style={{color:C.amber}}>⚠ {r.amber} amber</span><span style={{color:C.red}}>✕ {r.red} urgent</span>
+          </div>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+            <Btn variant="secondary" small>View report</Btn><Btn variant="ghost" small>Download PDF</Btn><Btn variant="ghost" small>Export Excel</Btn>
+          </div>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+// ── NAV ────────────────────────────────────────────────────────────────────
+const NAVS = {
+  admin:[{id:"a_dash",l:"Dashboard",i:"⊞"},{id:"a_cal",l:"Calendar",i:"📅"},{id:"a_tasks",l:"Tasks",i:"✓"},{id:"a_find",l:"Findings",i:"⚑"}],
+  tech: [{id:"t_dash",l:"My visits",i:"📋"}],
+  owner:[{id:"o_dash",l:"Properties",i:"🏨"},{id:"o_pend",l:"Pending",i:"⚑"},{id:"o_rep",l:"Reports",i:"📊"}],
+};
+const PCOL={admin:C.teal,tech:"#6366F1",owner:C.amber};
+
+// ── APP ROOT ───────────────────────────────────────────────────────────────
+function App() {
+  const [user,setUser]=useState(null);
+  const [view,setView]=useState({page:"a_dash"});
+  const [menu,setMenu]=useState(false);
+
+  const login=(u)=>{setUser(u);const d={admin:"a_dash",tech:"t_dash",owner:"o_dash"};setView({page:d[u.role]});};
+  const logout=()=>{setUser(null);setView({page:"a_dash"});};
+
+  if(!user) return <Login onLogin={login}/>;
+
+  const nav=NAVS[user.role]||[];
+  const pc=PCOL[user.role];
+
+  const isActive=(nid)=>{
+    if(nid==="a_dash"&&(view.page.startsWith("a_prop")||view.page.startsWith("a_area")||view.page.startsWith("a_room"))) return true;
+    if(nid==="o_dash"&&(view.page.startsWith("o_prop")||view.page.startsWith("o_area")||view.page.startsWith("o_room"))) return true;
+    if(nid==="t_dash"&&view.page.startsWith("t_")) return true;
+    return view.page===nid;
+  };
+
+  const content=()=>{
+    switch(view.page){
+      case "a_dash": return <AdminDash setView={setView}/>;
+      case "a_prop": return <AdminProp propId={view.propId} setView={setView}/>;
+      case "a_area": return <AdminArea propId={view.propId} areaId={view.areaId} setView={setView}/>;
+      case "a_room": return <AdminRoom propId={view.propId} areaId={view.areaId} roomId={view.roomId} setView={setView}/>;
+      case "a_cal":  return <AdminCal setView={setView}/>;
+      case "a_tasks":return <AdminTasks/>;
+      case "a_find": return <AdminFindings/>;
+      case "t_dash": return <TechDash user={user} setView={setView}/>;
+      case "t_cat":  return <TechCat {...view} setView={setView}/>;
+      case "t_area": return <TechArea {...view} setView={setView}/>;
+      case "t_check":return <TechCheck {...view} setView={setView}/>;
+      case "o_dash": return <OwnerDash user={user} setView={setView}/>;
+      case "o_prop": return <OwnerProp user={user} propId={view.propId} setView={setView}/>;
+      case "o_area": return <OwnerArea user={user} propId={view.propId} areaId={view.areaId} setView={setView}/>;
+      case "o_room": return <OwnerRoom user={user} propId={view.propId} areaId={view.areaId} roomId={view.roomId} setView={setView}/>;
+      case "o_pend": return <OwnerPending user={user}/>;
+      case "o_rep":  return <OwnerReports/>;
+      default: return null;
+    }
+  };
+
+  return (
+    <div style={{fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",background:C.bg,minHeight:"100vh",display:"flex",flexDirection:"column"}}>
+      <div style={{background:C.nav,padding:"0 16px",display:"flex",alignItems:"center",height:50,position:"sticky",top:0,zIndex:100}}>
+        <button onClick={()=>setMenu(!menu)} style={{background:"none",border:"none",color:C.white,fontSize:20,cursor:"pointer",marginRight:12,padding:"0 4px"}}>☰</button>
+        <div style={{color:C.white,fontWeight:800,fontSize:15,letterSpacing:-0.5,flex:1}}>PMS Malta</div>
+        <div style={{padding:"3px 10px",borderRadius:20,background:pc,color:C.white,fontSize:11,fontWeight:600,marginRight:12}}>
+          {user.role.charAt(0).toUpperCase()+user.role.slice(1)}
+        </div>
+        <button onClick={logout} style={{background:"rgba(255,255,255,0.1)",border:"none",color:"rgba(255,255,255,0.8)",padding:"4px 10px",borderRadius:6,fontSize:11,cursor:"pointer"}}>Sign out</button>
+      </div>
+
+      {menu&&<div style={{position:"fixed",top:50,left:0,bottom:0,right:0,zIndex:200,display:"flex"}}>
+        <div style={{width:220,background:C.nav,padding:"20px 12px",overflowY:"auto"}}>
+          <div style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.3)",marginBottom:10,paddingLeft:8,textTransform:"uppercase",letterSpacing:1}}>{user.role} portal</div>
+          {nav.map(n=>{
+            const active=isActive(n.id);
+            return <button key={n.id} onClick={()=>{setView({page:n.id});setMenu(false);}} style={{display:"flex",alignItems:"center",gap:10,width:"100%",padding:"10px 8px",borderRadius:7,border:"none",cursor:"pointer",marginBottom:4,background:active?"rgba(255,255,255,0.12)":"transparent",color:active?C.white:"rgba(255,255,255,0.55)",fontSize:14,fontWeight:active?600:400,textAlign:"left"}}>
+              <span style={{fontSize:16}}>{n.i}</span>{n.l}
+            </button>;
+          })}
+          <div style={{marginTop:20,borderTop:"1px solid rgba(255,255,255,0.1)",paddingTop:16}}>
+            <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",padding:"6px 8px"}}>{user.name}</div>
+            <div style={{fontSize:11,color:"rgba(255,255,255,0.3)",padding:"0 8px 6px"}}>{user.email}</div>
+          </div>
+        </div>
+        <div style={{flex:1,background:"rgba(0,0,0,0.4)"}} onClick={()=>setMenu(false)}/>
+      </div>}
+
+      <div style={{flex:1,padding:16,overflowY:"auto"}}>
+        {content()}
+      </div>
+
+      <div style={{background:C.nav,display:"flex",borderTop:"1px solid rgba(255,255,255,0.1)",position:"sticky",bottom:0}}>
+        {nav.map(n=>{
+          const active=isActive(n.id);
+          return <button key={n.id} onClick={()=>setView({page:n.id})} style={{flex:1,padding:"10px 0",background:"transparent",border:"none",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
+            <span style={{fontSize:18}}>{n.i}</span>
+            <span style={{fontSize:9,color:active?pc:"rgba(255,255,255,0.4)",fontWeight:active?700:400}}>{n.l}</span>
+          </button>;
+        })}
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
