@@ -522,39 +522,55 @@ function Sel({label,value,onChange,options}){
 }
 
 // ── EVENT CARD ─────────────────────────────────────────────────────────────
-function EventCard({event:ev,showActions,onAction}){
-  const[state,setState]=useState(ev.quote_status!=="none"?ev.quote_status:null);
+function MockPhoto({seed,label}){
+  const colors=["#1A7A6E","#D4920A","#C0392B","#6366F1","#1A5A8A","#5A4010"];
+  const col=colors[Math.abs((seed||"x").split("").reduce((a,c)=>a+c.charCodeAt(0),0))%colors.length];
+  return e("div",{style:{position:"relative",width:100,height:80,borderRadius:8,overflow:"hidden",flexShrink:0,border:"1px solid #E2E8F0",background:col,display:"flex",alignItems:"center",justifyContent:"center"}},
+    e("div",{style:{display:"flex",flexDirection:"column",alignItems:"center",gap:3,padding:6}},
+      e("div",{style:{fontSize:20}},"📷"),
+      e("div",{style:{fontSize:8,color:"rgba(255,255,255,0.9)",fontWeight:700,textAlign:"center",lineHeight:1.2}},label?label.slice(0,14):"Photo"),
+      e("div",{style:{fontSize:7,color:"rgba(255,255,255,0.6)",fontWeight:700,letterSpacing:0.5}},"[MOCK IMAGE]")));
+}
+
+function EventCard({event:ev,showActions,onAction,showProp,propName}){
+  const[state,setState]=useState(ev.quote_status&&ev.quote_status!=="none"?ev.quote_status:null);
   const act=async(val)=>{
     setState(val);
     await db.updateEvent(ev.id,{quote_status:val==="quote"?"requested":"none"});
     if(onAction)onAction();
   };
-  const parts=[];
-  parts.push(e("div",{key:"hd",style:{display:"flex",gap:8,marginBottom:6,alignItems:"center",flexWrap:"wrap"}},
-    e(RagBadge,{rag:ev.rag}),
-    e(TypeBadge,{type:ev.tasks&&ev.tasks.type}),
-    ev.tasks&&e("span",{style:{fontSize:11,fontWeight:700,color:C.teal}},ev.tasks.ref),
-    ev.areas&&e("span",{style:{fontSize:11,color:C.mid}},(ev.areas.icon||"")+" "+(ev.areas.name||"")+(ev.rooms?" · "+ev.rooms.name:"")),
-    e("span",{style:{marginLeft:"auto",fontSize:11,color:C.mid}},ev.completed_at?ev.completed_at.slice(0,10):""))
-  );
-  parts.push(e("div",{key:"ti",style:{fontSize:14,fontWeight:600,marginBottom:4}},ev.title));
-  if(ev.notes)parts.push(e("div",{key:"no",style:{fontSize:13,color:C.mid,marginBottom:6}},ev.notes));
-  if(ev.photo_urls&&ev.photo_urls.filter(u=>u).length>0){
-    parts.push(e("div",{key:"ph",style:{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap"}},
-      ev.photo_urls.filter(u=>u).map((url,i)=>e("img",{key:i,src:url,style:{width:72,height:72,objectFit:"cover",borderRadius:8,border:"1px solid "+C.line}}))));
-  }
-  if(showActions&&ev.rag!=="green"){
-    if(!state||state==="none"){
-      parts.push(e("div",{key:"ac",style:{display:"flex",gap:8,marginTop:6}},
-        e(Btn,{key:"ack",small:true,variant:"ghost",onClick:()=>act("ack")},"Noted — no action"),
-        e(Btn,{key:"qte",small:true,variant:"secondary",onClick:()=>act("quote")},"Request quote")));
-    } else {
-      parts.push(e("div",{key:"done",style:{padding:"6px 12px",borderRadius:6,background:state==="quote"||state==="requested"?C.amberL:C.greenL,color:state==="quote"||state==="requested"?C.amber:C.green,fontSize:12,fontWeight:600,display:"inline-block",marginTop:6}},
-        state==="quote"||state==="requested"?"✓ Quote requested — PMS Malta will respond":"✓ Noted"));
-    }
-  }
-  if(ev.rag==="green")parts.push(e("div",{key:"ok",style:{marginTop:4}},e("span",{style:{fontSize:11,color:C.green,fontWeight:600}},"✓ Task complete"+(ev.charge_amount>0?" · €"+ev.charge_amount+" charged":""))));
-  return e("div",{style:{padding:"12px 0",borderBottom:"1px solid "+C.line}},parts);
+  const note=ev.note||ev.notes||"";
+  const taskName=ev.title||ev.task_name||(ev.tasks&&ev.tasks.name)||"Event";
+  const areaLabel=(ev.areas&&((ev.areas.icon||"")+" "+(ev.areas.name||"")))||"";
+  const roomLabel=ev.rooms?(" · "+ev.rooms.name):"";
+  const ragColor={red:C.red,amber:C.amber,green:C.green}[ev.rag]||C.mid;
+
+  return e("div",{style:{borderLeft:"4px solid "+ragColor,background:C.white,borderRadius:8,padding:"12px 14px",marginBottom:10,boxShadow:"0 1px 4px rgba(0,0,0,0.06)"}},
+    e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6,flexWrap:"wrap",gap:4}},
+      e("div",{style:{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}},
+        e(RagBadge,{rag:ev.rag}),
+        showProp&&propName&&e("span",{style:{fontSize:11,fontWeight:700,color:C.teal,background:C.tealL,padding:"2px 8px",borderRadius:12}},propName),
+        e("span",{style:{fontSize:11,color:C.mid}},areaLabel+roomLabel),
+        ev.tasks&&ev.tasks.ref&&e("span",{style:{fontSize:10,fontWeight:700,color:C.mid,background:"#F1F5F9",padding:"2px 6px",borderRadius:4}},ev.tasks.ref)),
+      e("span",{style:{fontSize:11,color:C.mid,whiteSpace:"nowrap"}},ev.completed_at?ev.completed_at.slice(0,10):"")
+    ),
+    e("div",{style:{fontSize:14,fontWeight:700,color:C.text,marginBottom:6}},taskName),
+    note&&e("div",{style:{background:"#F7F9FB",borderRadius:6,padding:"8px 10px",marginBottom:8}},
+      e("div",{style:{fontSize:10,fontWeight:700,color:C.mid,textTransform:"uppercase",letterSpacing:0.5,marginBottom:4}},"Technician report"),
+      e("div",{style:{fontSize:13,color:C.slate,lineHeight:1.6}},note)),
+    ev.photo_urls&&ev.photo_urls.filter(u=>u).length>0&&e("div",{style:{display:"flex",gap:8,marginBottom:8,flexWrap:"wrap"}},
+      ev.photo_urls.filter(u=>u).map((url,i)=>{
+        const seed=(url.split("/seed/")[1]||"").split("/")[0]||("ph"+i);
+        return e(MockPhoto,{key:i,seed:seed,label:taskName.slice(0,14)});
+      })),
+    (ev.quote_status==="approved"||ev.quote_status==="sent")&&e("div",{style:{display:"inline-flex",alignItems:"center",gap:6,padding:"4px 10px",borderRadius:20,background:C.greenL,color:C.green,fontSize:12,fontWeight:700,marginBottom:6}},"✓ Quote approved — works completed"),
+    ev.quote_status==="requested"&&e("div",{style:{display:"inline-flex",alignItems:"center",gap:6,padding:"4px 10px",borderRadius:20,background:C.amberL,color:C.amber,fontSize:12,fontWeight:700,marginBottom:6}},"⏳ Quote requested — awaiting PMS response"),
+    showActions&&ev.rag!=="green"&&(!state||state==="none")&&e("div",{style:{display:"flex",gap:8,marginTop:8}},
+      e(Btn,{small:true,variant:"ghost",onClick:()=>act("ack")},"Noted — no action"),
+      e(Btn,{small:true,variant:"secondary",onClick:()=>act("quote")},"Request quote")),
+    showActions&&state&&state!=="none"&&ev.rag!=="green"&&e("div",{style:{padding:"6px 12px",borderRadius:6,background:state==="quote"||state==="requested"?C.amberL:C.greenL,color:state==="quote"||state==="requested"?C.amber:C.green,fontSize:12,fontWeight:600,display:"inline-block",marginTop:6}},
+      state==="quote"||state==="requested"?"✓ Quote requested — PMS Malta will be in touch":"✓ Noted"),
+    ev.rag==="green"&&e("div",{style:{marginTop:4}},e("span",{style:{fontSize:12,color:C.green,fontWeight:700}},"✓ Satisfactory — no action required")));
 }
 
 // ── LOGIN ──────────────────────────────────────────────────────────────────
@@ -3292,9 +3308,7 @@ function Login({onLogin}){
   };
 
   const DEMO_ROLES=[
-    {key:"demo.admin",label:"Admin portal",icon:"🔧",desc:"Full access — all 8 properties, schedule, events, manage users"},
-    {key:"demo.owner",label:"Mr Borg — Property Owner",icon:"🏨",desc:"2 hotels + 6 apartments — full event history, schedules, quote workflow"},
-    {key:"demo.tech",label:"Technician",icon:"👷",desc:"Tech portal — visit schedule & task completion flow"},
+    {key:"demo.owner",label:"Mr Borg — Property Owner",icon:"🏨",desc:"2 hotels + 6 apartments · full event history · schedules · quote workflow"},
   ];
 
   return e("div",{style:{minHeight:"100vh",background:C.nav,display:"flex",alignItems:"center",justifyContent:"center",padding:16}},
@@ -3437,7 +3451,7 @@ function AdminArea({propId,areaId,setView}){
   },[propId,areaId]);
   if(loading)return e(Spin,null);if(!prop||!area)return null;
   const ar=areaRag(events,areaId);
-  const areaEvents=events.filter(ev=>!ev.room_id);
+  const areaEvents=events.filter(ev=>ev.area_id===areaId);
   const tabBtns=["events","tasks"].map(id=>e("button",{key:id,onClick:()=>setTab(id),style:{padding:"6px 16px",borderRadius:20,border:"1.5px solid "+(tab===id?C.teal:C.line),background:tab===id?C.teal:C.white,color:tab===id?C.white:C.mid,fontSize:12,fontWeight:600,cursor:"pointer"}},(id==="events"?"Events ("+areaEvents.length+")":"Tasks ("+tasks.length+")")));
   return e("div",null,
     e(SectionHead,{title:(area.icon||"")+" "+area.name,sub:prop.name,action:e(RagBadge,{rag:ar}),back:()=>setView({page:"a_prop",propId})}),
@@ -3662,18 +3676,13 @@ function OwnerDash({user,setView}){
     const map={red:{list:urgent,label:"Urgent events",rag:"red"},amber:{list:amber,label:"Attention needed",rag:"amber"},green:{list:complete,label:"Completed tasks",rag:"green"},pending:{list:pending,label:"Awaiting your action",rag:null}};
     const m=map[filter];
     return e("div",null,
-      e(SectionHead,{title:m.label,sub:events.length+" total events logged",back:()=>setFilter(null)}),
+      e(SectionHead,{title:m.label,sub:m.list.length+" events · tap an event for details",back:()=>setFilter(null)}),
       m.list.length===0&&e(Card,null,e("div",{style:{textAlign:"center",padding:32,color:C.mid}},"No events in this category.")),
-      m.list.map(ev=>e(Card,{key:ev.id,style:{marginBottom:10}},
-        e("div",{style:{display:"flex",gap:8,marginBottom:6,flexWrap:"wrap",alignItems:"center"}},
-          e(RagBadge,{rag:ev.rag}),
-          e("span",{style:{fontSize:11,color:C.mid}},(ev.areas&&ev.areas.icon||"")+" "+(ev.areas&&ev.areas.name||"")+(ev.rooms?" · "+ev.rooms.name:"")),
-          e("span",{style:{marginLeft:"auto",fontSize:11,color:C.mid}},ev.completed_at?ev.completed_at.slice(0,10):"")),
-        e("div",{style:{fontSize:14,fontWeight:600,marginBottom:4}},ev.title),
-        ev.notes&&e("div",{style:{fontSize:13,color:C.mid}},ev.notes),
-        ev.rag!=="green"&&ev.quote_status==="none"&&e("div",{style:{display:"flex",gap:8,marginTop:8}},
-          e(Btn,{small:true,variant:"ghost",onClick:async()=>{await db.updateEvent(ev.id,{quote_status:"none"});setFilter(null);setTimeout(()=>setFilter(filter),50);}},"Noted"),
-          e(Btn,{small:true,variant:"secondary",onClick:async()=>{await db.updateEvent(ev.id,{quote_status:"requested"});setFilter(null);setTimeout(()=>setFilter(filter),50);}},"Request quote")))));
+      m.list.map(ev=>{
+        const prop=props.find(p=>p.id===ev.prop_id);
+        return e(EventCard,{key:ev.id,event:ev,showActions:(filter==="pending"||filter==="red"||filter==="amber"),showProp:true,propName:prop&&prop.name,
+          onAction:()=>{Promise.all([db.getProperties(user.prop_ids||[]),db.getEvents(user.prop_ids&&user.prop_ids.length?{propIds:user.prop_ids}:{})]).then(([p,ev])=>{setProps(p);setEvents(ev);});}});
+      }));
   }
 
   return e("div",null,
@@ -3735,7 +3744,7 @@ function OwnerArea({user,propId,areaId,setView}){
   useEffect(()=>{Promise.all([db.getProperties([propId]),db.getAreas(propId),db.getRooms(propId,areaId),db.getEvents({propId,areaId}),db.getTasksForArea(propId,areaId)]).then(([ps,areas,r,ev,t])=>{setProp(ps[0]);setArea(areas.find(a=>a.id===areaId));setRooms(r);setEvents(ev);setTasks(t);setLoading(false);});},[propId,areaId]);
   if(loading)return e(Spin,null);if(!prop||!area)return null;
   const ar=areaRag(events,areaId);
-  const areaEvents=events.filter(ev=>!ev.room_id);
+  const areaEvents=events.filter(ev=>ev.area_id===areaId);
   return e("div",null,
     e(SectionHead,{title:(area.icon||"")+" "+area.name,sub:prop.name,action:e(RagBadge,{rag:ar}),back:()=>setView({page:"o_prop",propId})}),
     rooms.length>0&&e("div",null,
@@ -3783,18 +3792,31 @@ function OwnerSchedule({user}){
   const[msg,setMsg]=useState("");
   const[loading,setLoading]=useState(true);
   const[expanded,setExpanded]=useState({});
-  const propId=(user.prop_ids||[])[0]||"p1";
+  const propIds=user.prop_ids||[];
+  const[selProp,setSelProp]=useState(propIds[0]||null);
+  const[allProps,setAllProps]=useState([]);
 
-  useEffect(()=>{db.getScheduleMonths(propId).then(m=>{setMonths(m);setLoading(false);});},[propId]);
+  useEffect(()=>{
+    db.getProperties(propIds.length?propIds:undefined).then(ps=>{
+      setAllProps(ps);
+      if(!selProp&&ps.length)setSelProp(ps[0].id);
+    });
+  },[user.id]);
+
+  useEffect(()=>{
+    if(!selProp)return;
+    setLoading(true);
+    db.getScheduleMonths(selProp).then(m=>{setMonths(m);setLoading(false);});
+  },[selProp]);
 
   const openMonth=async m=>{
     setSelMonth(m);setExpanded({});
-    const t=await db.getScheduleForMonth(propId,m);
+    const t=await db.getScheduleForMonth(selProp,m);
     setMonthTasks(t);
   };
   const approve=async()=>{
     setApproving(true);
-    await db.approveMonth(propId,selMonth,user.id);
+    await db.approveMonth(selProp,selMonth,user.id);
     setMonths(m=>Object.assign({},m,{[selMonth]:"approved"}));
     setMsg("Schedule approved ✓");setApproving(false);
     setTimeout(()=>setMsg(""),3000);
@@ -3831,11 +3853,29 @@ function OwnerSchedule({user}){
     return Object.values(map);
   };
 
+  // Real visit dates per month index (Oct'26=0)
+  const VISIT_DATES={
+    "Sep '26":"8 Sep 2026","Oct '26":"6 Oct 2026","Nov '26":"4 Nov 2026","Dec '26":"2 Dec 2026",
+    "Jan '27":"7 Jan 2027","Feb '27":"4 Feb 2027","Mar '27":"4 Mar 2027","Apr '27":"1 Apr 2027",
+    "May '27":"6 May 2027","Jun '27":"3 Jun 2027","Jul '27":"1 Jul 2027","Aug '27":"5 Aug 2027","Sep '27":"3 Sep 2027",
+    // Apartments — quarterly
+    "Dec '25":"3 Dec 2025","Mar '26":"4 Mar 2026","Jun '26":"3 Jun 2026",
+  };
+
   return e("div",null,
-    e(SectionHead,{title:"PPM Schedule",sub:"12-month planned maintenance programme"}),
+    e(SectionHead,{title:"PPM Schedule",sub:"Planned maintenance across your portfolio"}),
     msg&&e("div",{style:{marginBottom:14,padding:"10px 14px",background:C.greenL,color:C.green,borderRadius:8,fontSize:13,fontWeight:600}},msg),
+
+    // Property selector
+    allProps.length>1&&e("div",{style:{display:"flex",gap:8,marginBottom:14,overflowX:"auto",paddingBottom:4}},
+      allProps.map(p=>e("button",{key:p.id,onClick:()=>{setSelProp(p.id);setSelMonth(null);},
+        style:{padding:"8px 14px",borderRadius:20,border:"1.5px solid "+(selProp===p.id?C.teal:C.line),
+          background:selProp===p.id?C.teal:C.white,color:selProp===p.id?C.white:C.mid,
+          fontSize:12,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap"}},
+        p.name))),
+
     e("div",{style:{fontSize:13,color:C.mid,marginBottom:16,padding:"10px 14px",background:C.tealL,borderRadius:8,lineHeight:1.6}},
-      "Tap a month to review planned works. Once happy tap ",e("b",null,"Approve")," — this confirms the visit."),
+      "Tap a month to review planned works. Approve to confirm the visit."),
 
     // Month grid — sorted Oct 2026 first
     e("div",{style:{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:20}},
@@ -3855,7 +3895,7 @@ function OwnerSchedule({user}){
       e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:10}},
         e("div",null,
           e("div",{style:{fontWeight:700,fontSize:17}},selMonth),
-          e("div",{style:{fontSize:12,color:C.mid}},"Proposed visit: "+(monthTasks.length?monthTasks[0].due_date:"TBC"))),
+          e("div",{style:{fontSize:12,color:C.mid}},"Scheduled visit: "+(VISIT_DATES[selMonth]||"To be confirmed by PMS Malta"))),
         months[selMonth]==="proposed"&&e(Btn,{variant:"green",onClick:approve,disabled:approving},approving?"Approving…":"Approve this month ✓"),
         months[selMonth]==="approved"&&e("span",{style:{padding:"6px 14px",borderRadius:20,background:C.greenL,color:C.green,fontSize:13,fontWeight:700}},"✓ Approved"),
         months[selMonth]==="draft"&&e("span",{style:{fontSize:12,color:C.mid,fontStyle:"italic"}},"Being prepared by PMS Malta")),
@@ -3949,61 +3989,176 @@ function OwnerPending({user}){
   const propIds=user.prop_ids||[];
   useEffect(()=>{
     Promise.all([db.getEvents(propIds.length?{propIds}:{}),db.getProperties(propIds.length?propIds:undefined)]).then(([ev,p])=>{
-      setEvents(ev.filter(x=>x.rag!=="green"&&x.quote_status==="none"));setProps(p);setLoading(false);});
+      setEvents(ev.filter(x=>x.rag!=="green"&&(x.quote_status==="none"||x.quote_status==="requested")));
+      setProps(p);setLoading(false);});
   },[user.id]);
-  const removeEvent=id=>setEvents(p=>p.filter(ev=>ev.id!==id));
+  const refresh=()=>{
+    db.getEvents(propIds.length?{propIds}:{}).then(ev=>setEvents(ev.filter(x=>x.rag!=="green"&&(x.quote_status==="none"||x.quote_status==="requested"))));
+  };
   if(loading)return e(Spin,null);
+
+  // Group by property
+  const byProp={};
+  events.forEach(ev=>{if(!byProp[ev.prop_id])byProp[ev.prop_id]=[];byProp[ev.prop_id].push(ev);});
+
   return e("div",null,
-    e(SectionHead,{title:"Pending actions",sub:"Events requiring your decision"}),
-    events.length===0&&e(Card,null,e("div",{style:{textAlign:"center",padding:32,color:C.mid}},"All clear — no pending actions.")),
-    events.map(ev=>{
-      const prop=props.find(p=>p.id===ev.prop_id);
-      return e(Card,{key:ev.id,style:{marginBottom:10}},
-        e("div",{style:{fontSize:11,color:C.mid,marginBottom:6}},(prop&&prop.name||"")+" › "+(ev.areas&&ev.areas.icon||"")+" "+(ev.areas&&ev.areas.name||"")+(ev.rooms?" › "+ev.rooms.name:"")),
-        e(EventCard,{event:ev,showActions:true,onAction:()=>removeEvent(ev.id)}));
+    e(SectionHead,{title:"Actions",sub:events.length+" events requiring attention across "+Object.keys(byProp).length+" properties"}),
+    events.length===0&&e(Card,null,e("div",{style:{textAlign:"center",padding:32,color:C.mid}},"All clear — no pending actions. 🎉")),
+    props.filter(p=>byProp[p.id]&&byProp[p.id].length>0).map(prop=>{
+      const pev=byProp[prop.id]||[];
+      const pRag=pev.some(e=>e.rag==="red")?"red":pev.some(e=>e.rag==="amber")?"amber":"green";
+      return e("div",{key:prop.id,style:{marginBottom:20}},
+        e("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10,padding:"10px 14px",background:C.nav,borderRadius:8}},
+          e("div",null,
+            e("div",{style:{fontWeight:700,fontSize:15,color:C.white}},prop.name),
+            e("div",{style:{fontSize:11,color:"rgba(255,255,255,0.55)",marginTop:2}},prop.address)),
+          e(RagBadge,{rag:pRag})),
+        pev.map(ev=>e(EventCard,{key:ev.id,event:ev,showActions:true,propName:prop.name,onAction:refresh})));
     }));
 }
 
 // ── OWNER REPORTS ──────────────────────────────────────────────────────────
 function OwnerReports({user}){
-  const[events,setEvents]=useState([]);const[loading,setLoading]=useState(true);const[selMonth,setSelMonth]=useState(null);
+  const[events,setEvents]=useState([]);const[props,setProps]=useState([]);const[loading,setLoading]=useState(true);
+  const[selMonth,setSelMonth]=useState(null);const[selProp,setSelProp]=useState("all");
   const propIds=user.prop_ids||[];
-  useEffect(()=>{db.getEvents(propIds.length?{propIds}:{}).then(ev=>{setEvents(ev);setLoading(false);});},[user.id]);
-  const exportCSV=m=>{
-    const me=events.filter(ev=>ev.month_label===m);
-    const header="Date,Area,Room,Task,Ref,Type,Status,Notes,Charge\n";
-    const rows=me.map(ev=>[ev.completed_at?ev.completed_at.slice(0,10):"",(ev.areas&&ev.areas.name)||"",(ev.rooms&&ev.rooms.name)||"",ev.title||"",(ev.tasks&&ev.tasks.ref)||"",(ev.tasks&&ev.tasks.type)||"",ev.rag||"",(ev.notes||"").replace(/,/g," "),ev.charge_amount>0?"€"+ev.charge_amount:""].join(",")).join("\n");
-    const blob=new Blob([header+rows],{type:"text/csv"});
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement("a");a.href=url;a.download="PPM_"+m.replace(/ /g,"_")+".csv";
-    document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
+  useEffect(()=>{
+    Promise.all([db.getEvents(propIds.length?{propIds}:{}),db.getProperties(propIds.length?propIds:undefined)]).then(([ev,p])=>{setEvents(ev);setProps(p);setLoading(false);});
+  },[user.id]);
+
+  const printReport=(m,pId)=>{
+    const me=events.filter(ev=>ev.month_label===m&&(pId==="all"||ev.prop_id===pId));
+    const propName=pId==="all"?"All Properties":(props.find(p=>p.id===pId)||{}).name||"";
+    // Group by property then area
+    const byProp={};
+    me.forEach(ev=>{
+      if(!byProp[ev.prop_id])byProp[ev.prop_id]={name:(props.find(p=>p.id===ev.prop_id)||{}).name||ev.prop_id,areas:{}};
+      const aid=ev.area_id||"general";
+      if(!byProp[ev.prop_id].areas[aid])byProp[ev.prop_id].areas[aid]={name:(ev.areas&&ev.areas.name)||"General",events:[]};
+      byProp[ev.prop_id].areas[aid].events.push(ev);
+    });
+    const ragLabel={red:"🔴 URGENT",amber:"🟡 ATTENTION",green:"🟢 SATISFACTORY"};
+    const propBlocks=Object.values(byProp).map(prop=>{
+      const areaBlocks=Object.values(prop.areas).map(area=>{
+        const evRows=area.events.map(ev=>{
+          const note=ev.note||ev.notes||"";
+          const taskName=ev.title||ev.task_name||(ev.tasks&&ev.tasks.name)||"";
+          const qs=ev.quote_status;
+          const qsLabel=qs==="approved"?"Quote approved & works completed":qs==="requested"?"Quote requested — awaiting response":qs==="sent"?"Quote issued":null;
+          return \`<tr style="border-bottom:1px solid #E2E8F0;">
+            <td style="padding:8px 6px;font-size:12px;color:#64748B;">\${ev.completed_at?ev.completed_at.slice(0,10):""}</td>
+            <td style="padding:8px 6px;font-size:12px;">\${ev.rooms?ev.rooms.name:""}</td>
+            <td style="padding:8px 6px;font-size:13px;font-weight:600;">\${taskName}</td>
+            <td style="padding:8px 6px;font-size:12px;font-weight:700;color:\${ev.rag==="red"?"#C0392B":ev.rag==="amber"?"#D4920A":"#1A7A4A"};">\${ragLabel[ev.rag]||ev.rag}</td>
+            <td style="padding:8px 6px;font-size:12px;color:#2C3E50;line-height:1.5;">\${note}\${qsLabel?"<br><span style='font-size:11px;font-weight:700;color:#1A7A4A;'>"+qsLabel+"</span>":""}</td>
+          </tr>\`;
+        }).join("");
+        return \`<div style="margin-bottom:20px;">
+          <div style="font-size:13px;font-weight:700;color:#1A7A6E;padding:6px 10px;background:#E6F4F2;border-radius:6px;margin-bottom:8px;">\${area.name}</div>
+          <table style="width:100%;border-collapse:collapse;font-family:Arial,sans-serif;">
+            <thead><tr style="background:#F7F9FB;"><th style="padding:7px 6px;font-size:11px;font-weight:700;color:#64748B;text-align:left;">Date</th><th style="padding:7px 6px;font-size:11px;font-weight:700;color:#64748B;text-align:left;">Room</th><th style="padding:7px 6px;font-size:11px;font-weight:700;color:#64748B;text-align:left;">Task</th><th style="padding:7px 6px;font-size:11px;font-weight:700;color:#64748B;text-align:left;">Status</th><th style="padding:7px 6px;font-size:11px;font-weight:700;color:#64748B;text-align:left;">Technician Notes</th></tr></thead>
+            <tbody>\${evRows}</tbody>
+          </table>
+        </div>\`;
+      }).join("");
+      return \`<div style="margin-bottom:30px;page-break-inside:avoid;">
+        <div style="font-size:16px;font-weight:800;color:#0F1923;border-bottom:2px solid #1A7A6E;padding-bottom:6px;margin-bottom:14px;">\${prop.name}</div>
+        \${areaBlocks}
+      </div>\`;
+    }).join("");
+    const html=\`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>PPM Report — \${m}</title>
+    <style>@media print{body{margin:0;}@page{margin:20mm;}} body{font-family:Arial,sans-serif;color:#0F1923;padding:30px;max-width:900px;margin:0 auto;}</style>
+    </head><body>
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px;padding-bottom:16px;border-bottom:3px solid #0F1923;">
+      <div>
+        <div style="font-size:22px;font-weight:800;color:#0F1923;">PPM Inspection Report</div>
+        <div style="font-size:15px;color:#1A7A6E;font-weight:700;margin-top:4px;">\${m} · \${propName}</div>
+        <div style="font-size:12px;color:#64748B;margin-top:4px;">Prepared by PMS Malta · Matthew Schembri · +356 79680343</div>
+      </div>
+      <div style="text-align:right;font-size:11px;color:#64748B;">
+        <div style="font-size:20px;font-weight:800;color:#1A7A6E;">PMS Malta</div>
+        <div>Preventive Maintenance Services</div>
+        <div>matthew.schembri@cantab.net</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:20px;margin-bottom:24px;padding:12px 16px;background:#F7F9FB;border-radius:8px;">
+      <div style="text-align:center;"><div style="font-size:22px;font-weight:800;color:#0F1923;">\${me.length}</div><div style="font-size:11px;color:#64748B;text-transform:uppercase;">Total events</div></div>
+      <div style="text-align:center;"><div style="font-size:22px;font-weight:800;color:#1A7A4A;">\${me.filter(e=>e.rag==="green").length}</div><div style="font-size:11px;color:#64748B;text-transform:uppercase;">Satisfactory</div></div>
+      <div style="text-align:center;"><div style="font-size:22px;font-weight:800;color:#D4920A;">\${me.filter(e=>e.rag==="amber").length}</div><div style="font-size:11px;color:#64748B;text-transform:uppercase;">Attention</div></div>
+      <div style="text-align:center;"><div style="font-size:22px;font-weight:800;color:#C0392B;">\${me.filter(e=>e.rag==="red").length}</div><div style="font-size:11px;color:#64748B;text-transform:uppercase;">Urgent</div></div>
+    </div>
+    \${propBlocks}
+    <div style="margin-top:30px;padding-top:14px;border-top:1px solid #E2E8F0;font-size:11px;color:#64748B;">
+      Report generated \${new Date().toLocaleDateString("en-GB",{day:"numeric",month:"long",year:"numeric"})} · PMS Malta · Confidential — for property owner use only
+    </div>
+    </body></html>\`;
+    const w=window.open("","_blank");w.document.write(html);w.document.close();setTimeout(()=>w.print(),500);
   };
+
   if(loading)return e(Spin,null);
-  const months=[...new Set(events.map(ev=>ev.month_label).filter(Boolean))];
-  const monthEvents=selMonth?events.filter(ev=>ev.month_label===selMonth):[];
+  const allMonths=[...new Set(events.map(ev=>ev.month_label).filter(Boolean))].sort((a,b)=>{
+    const parse=s=>{const[mon,yr]=s.split(" '");const mi=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"].indexOf(mon);return parseInt("20"+yr)*12+mi;};
+    return parse(a)-parse(b);
+  });
+  const filtEvs=selProp==="all"?events:events.filter(ev=>ev.prop_id===selProp);
+  const months=[...new Set(filtEvs.map(ev=>ev.month_label).filter(Boolean))];
+  const monthEvents=selMonth?filtEvs.filter(ev=>ev.month_label===selMonth):[];
+
   return e("div",null,
-    e(SectionHead,{title:"Monthly reports",sub:"PPM event reports by month",action:selMonth?e(Btn,{variant:"ghost",small:true,onClick:()=>setSelMonth(null)},"← All months"):null}),
+    e(SectionHead,{title:"Reports",sub:"PPM inspection reports by property and month",
+      action:selMonth?e(Btn,{variant:"ghost",small:true,onClick:()=>setSelMonth(null)},"← Back"):null}),
+
+    // Property filter pills
+    !selMonth&&e("div",{style:{display:"flex",gap:8,marginBottom:14,overflowX:"auto",paddingBottom:4}},
+      e("button",{onClick:()=>setSelProp("all"),
+        style:{padding:"7px 14px",borderRadius:20,border:"1.5px solid "+(selProp==="all"?C.teal:C.line),
+          background:selProp==="all"?C.teal:C.white,color:selProp==="all"?C.white:C.mid,
+          fontSize:12,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap"}},"All properties"),
+      props.map(p=>e("button",{key:p.id,onClick:()=>setSelProp(p.id),
+        style:{padding:"7px 14px",borderRadius:20,border:"1.5px solid "+(selProp===p.id?C.teal:C.line),
+          background:selProp===p.id?C.teal:C.white,color:selProp===p.id?C.white:C.mid,
+          fontSize:12,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap"}},p.name))),
+
     !selMonth&&e("div",null,
-      months.length===0&&e(Card,null,e("div",{style:{textAlign:"center",padding:32,color:C.mid}},"Reports appear here after visits are completed.")),
+      months.length===0&&e(Card,null,e("div",{style:{textAlign:"center",padding:32,color:C.mid}},"No reports available.")),
       months.map(m=>{
-        const me=events.filter(ev=>ev.month_label===m);
-        const charged=me.reduce((s,ev)=>s+Number(ev.charge_amount||0),0);
+        const me=filtEvs.filter(ev=>ev.month_label===m);
+        // Group by property for summary
+        const propSummary={};
+        me.forEach(ev=>{if(!propSummary[ev.prop_id])propSummary[ev.prop_id]={name:(props.find(p=>p.id===ev.prop_id)||{}).name||ev.prop_id,red:0,amber:0,green:0};propSummary[ev.prop_id][ev.rag]=(propSummary[ev.prop_id][ev.rag]||0)+1;});
         return e(Card,{key:m,style:{marginBottom:14}},
-          e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}},e("div",{style:{fontSize:16,fontWeight:700}},m),charged>0&&e("span",{style:{fontWeight:700,color:C.teal}},"€"+charged)),
-          e("div",{style:{display:"flex",gap:14,fontSize:12,marginBottom:14}},e("span",null,me.length+" events"),e("span",{style:{color:C.green}},"✓ "+me.filter(ev=>ev.rag==="green").length+" complete"),e("span",{style:{color:C.amber}},"⚠ "+me.filter(ev=>ev.rag==="amber").length+" amber"),e("span",{style:{color:C.red}},"✕ "+me.filter(ev=>ev.rag==="red").length+" urgent")),
-          e("div",{style:{display:"flex",gap:8}},e(Btn,{variant:"secondary",small:true,onClick:()=>setSelMonth(m)},"View events"),e(Btn,{variant:"ghost",small:true,onClick:()=>exportCSV(m)},"Export CSV ↓")));
+          e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}},
+            e("div",{style:{fontSize:16,fontWeight:800}},m),
+            e("div",{style:{display:"flex",gap:8}},
+              e(Btn,{variant:"secondary",small:true,onClick:()=>setSelMonth(m)},"View events"),
+              e(Btn,{variant:"ghost",small:true,onClick:()=>printReport(m,selProp)},"🖨 Print report"))),
+          // Per-property summary
+          Object.values(propSummary).map(ps=>e("div",{key:ps.name,style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",borderBottom:"1px solid "+C.line}},
+            e("span",{style:{fontSize:12,fontWeight:700,color:C.text}},ps.name),
+            e("div",{style:{display:"flex",gap:10,fontSize:11}},
+              e("span",{style:{color:C.red}},"✕ "+ps.red),
+              e("span",{style:{color:C.amber}},"⚠ "+ps.amber),
+              e("span",{style:{color:C.green}},"✓ "+ps.green)))));
       })),
+
     selMonth&&e("div",null,
-      e("div",{style:{fontWeight:700,fontSize:16,marginBottom:4}},selMonth),
-      e("div",{style:{fontSize:12,color:C.mid,marginBottom:16}},monthEvents.length+" events logged"),
-      monthEvents.length===0&&e(Card,null,e("div",{style:{textAlign:"center",padding:32,color:C.mid}},"No events recorded for this month.")),
-      monthEvents.map(ev=>e(Card,{key:ev.id,style:{marginBottom:10}},
-        e("div",{style:{display:"flex",gap:8,marginBottom:6,flexWrap:"wrap",alignItems:"center"}},
-          e(RagBadge,{rag:ev.rag}),e("span",{style:{fontSize:11,color:C.mid}},(ev.areas&&ev.areas.icon||"")+" "+(ev.areas&&ev.areas.name||"")+(ev.rooms?" · "+ev.rooms.name:"")),e("span",{style:{marginLeft:"auto",fontSize:11,color:C.mid}},ev.completed_at?ev.completed_at.slice(0,10):"")),
-        e("div",{style:{fontSize:14,fontWeight:600,marginBottom:4}},ev.title),
-        ev.notes&&e("div",{style:{fontSize:13,color:C.mid,marginBottom:6}},ev.notes),
-        ev.photo_urls&&ev.photo_urls.filter(u=>u).length>0&&e("div",{style:{display:"flex",gap:6,flexWrap:"wrap",marginTop:6}},ev.photo_urls.filter(u=>u).map((url,i)=>e("img",{key:i,src:url,style:{width:72,height:72,objectFit:"cover",borderRadius:8,border:"1px solid "+C.line}}))))),
-      e("div",{style:{marginTop:16}},e(Btn,{variant:"secondary",onClick:()=>exportCSV(selMonth)},"Export this month as CSV ↓"))));
+      e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:8}},
+        e("div",null,
+          e("div",{style:{fontWeight:800,fontSize:18}},selMonth),
+          e("div",{style:{fontSize:12,color:C.mid}},monthEvents.length+" events · "+(selProp==="all"?"all properties":(props.find(p=>p.id===selProp)||{}).name||""))),
+        e(Btn,{variant:"primary",onClick:()=>printReport(selMonth,selProp)},"🖨 Print / Save PDF")),
+
+      // Group by property then area
+      (()=>{
+        const byProp={};
+        monthEvents.forEach(ev=>{if(!byProp[ev.prop_id])byProp[ev.prop_id]={name:(props.find(p=>p.id===ev.prop_id)||{}).name||ev.prop_id,areas:{}};const aid=ev.area_id||"g";if(!byProp[ev.prop_id].areas[aid])byProp[ev.prop_id].areas[aid]={name:(ev.areas&&((ev.areas.icon||"")+" "+(ev.areas.name||"")))||"General",events:[]};byProp[ev.prop_id].areas[aid].events.push(ev);});
+        return Object.values(byProp).map(prop=>e("div",{key:prop.name,style:{marginBottom:20}},
+          e("div",{style:{fontWeight:800,fontSize:15,color:C.white,background:C.nav,padding:"10px 14px",borderRadius:"8px 8px 0 0"}},prop.name),
+          Object.values(prop.areas).map(area=>e("div",{key:area.name,style:{border:"1px solid "+C.line,borderTop:"none",marginBottom:2,borderRadius:"0 0 6px 6px"}},
+            e("div",{style:{fontSize:12,fontWeight:700,color:C.teal,padding:"7px 14px",background:C.tealL}},area.name),
+            area.events.map(ev=>e("div",{key:ev.id,style:{padding:"10px 14px",borderBottom:"1px solid "+C.line}},
+              e(EventCard,{event:ev,showActions:false,showProp:false})))))))));
+      })()));
 }
 
 // ── NAV CONFIG ─────────────────────────────────────────────────────────────
