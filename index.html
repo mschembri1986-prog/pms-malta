@@ -4028,71 +4028,71 @@ function OwnerReports({user}){
 
   const printReport=(m,pId)=>{
     const me=events.filter(ev=>ev.month_label===m&&(pId==="all"||ev.prop_id===pId));
-    const propName=pId==="all"?"All Properties":(props.find(p=>p.id===pId)||{}).name||"";
-    // Group by property then area
+    const propName=pId==="all"?"All Properties":((props.find(p=>p.id===pId)||{}).name||"");
     const byProp={};
     me.forEach(ev=>{
-      if(!byProp[ev.prop_id])byProp[ev.prop_id]={name:(props.find(p=>p.id===ev.prop_id)||{}).name||ev.prop_id,areas:{}};
+      const pid=ev.prop_id;
+      if(!byProp[pid])byProp[pid]={name:(props.find(p=>p.id===pid)||{}).name||pid,areas:{}};
       const aid=ev.area_id||"general";
-      if(!byProp[ev.prop_id].areas[aid])byProp[ev.prop_id].areas[aid]={name:(ev.areas&&ev.areas.name)||"General",events:[]};
-      byProp[ev.prop_id].areas[aid].events.push(ev);
+      if(!byProp[pid].areas[aid])byProp[pid].areas[aid]={name:(ev.areas&&ev.areas.name)||"General",events:[]};
+      byProp[pid].areas[aid].events.push(ev);
     });
-    const ragLabel={red:"🔴 URGENT",amber:"🟡 ATTENTION",green:"🟢 SATISFACTORY"};
-    const propBlocks=Object.values(byProp).map(prop=>{
-      const areaBlocks=Object.values(prop.areas).map(area=>{
-        const evRows=area.events.map(ev=>{
-          const note=ev.note||ev.notes||"";
-          const taskName=ev.title||ev.task_name||(ev.tasks&&ev.tasks.name)||"";
-          const qs=ev.quote_status;
-          const qsLabel=qs==="approved"?"Quote approved & works completed":qs==="requested"?"Quote requested — awaiting response":qs==="sent"?"Quote issued":null;
-          return \`<tr style="border-bottom:1px solid #E2E8F0;">
-            <td style="padding:8px 6px;font-size:12px;color:#64748B;">\${ev.completed_at?ev.completed_at.slice(0,10):""}</td>
-            <td style="padding:8px 6px;font-size:12px;">\${ev.rooms?ev.rooms.name:""}</td>
-            <td style="padding:8px 6px;font-size:13px;font-weight:600;">\${taskName}</td>
-            <td style="padding:8px 6px;font-size:12px;font-weight:700;color:\${ev.rag==="red"?"#C0392B":ev.rag==="amber"?"#D4920A":"#1A7A4A"};">\${ragLabel[ev.rag]||ev.rag}</td>
-            <td style="padding:8px 6px;font-size:12px;color:#2C3E50;line-height:1.5;">\${note}\${qsLabel?"<br><span style='font-size:11px;font-weight:700;color:#1A7A4A;'>"+qsLabel+"</span>":""}</td>
-          </tr>\`;
-        }).join("");
-        return \`<div style="margin-bottom:20px;">
-          <div style="font-size:13px;font-weight:700;color:#1A7A6E;padding:6px 10px;background:#E6F4F2;border-radius:6px;margin-bottom:8px;">\${area.name}</div>
-          <table style="width:100%;border-collapse:collapse;font-family:Arial,sans-serif;">
-            <thead><tr style="background:#F7F9FB;"><th style="padding:7px 6px;font-size:11px;font-weight:700;color:#64748B;text-align:left;">Date</th><th style="padding:7px 6px;font-size:11px;font-weight:700;color:#64748B;text-align:left;">Room</th><th style="padding:7px 6px;font-size:11px;font-weight:700;color:#64748B;text-align:left;">Task</th><th style="padding:7px 6px;font-size:11px;font-weight:700;color:#64748B;text-align:left;">Status</th><th style="padding:7px 6px;font-size:11px;font-weight:700;color:#64748B;text-align:left;">Technician Notes</th></tr></thead>
-            <tbody>\${evRows}</tbody>
-          </table>
-        </div>\`;
-      }).join("");
-      return \`<div style="margin-bottom:30px;page-break-inside:avoid;">
-        <div style="font-size:16px;font-weight:800;color:#0F1923;border-bottom:2px solid #1A7A6E;padding-bottom:6px;margin-bottom:14px;">\${prop.name}</div>
-        \${areaBlocks}
-      </div>\`;
-    }).join("");
-    const html=\`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>PPM Report — \${m}</title>
-    <style>@media print{body{margin:0;}@page{margin:20mm;}} body{font-family:Arial,sans-serif;color:#0F1923;padding:30px;max-width:900px;margin:0 auto;}</style>
-    </head><body>
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px;padding-bottom:16px;border-bottom:3px solid #0F1923;">
-      <div>
-        <div style="font-size:22px;font-weight:800;color:#0F1923;">PPM Inspection Report</div>
-        <div style="font-size:15px;color:#1A7A6E;font-weight:700;margin-top:4px;">\${m} · \${propName}</div>
-        <div style="font-size:12px;color:#64748B;margin-top:4px;">Prepared by PMS Malta · Matthew Schembri · +356 79680343</div>
-      </div>
-      <div style="text-align:right;font-size:11px;color:#64748B;">
-        <div style="font-size:20px;font-weight:800;color:#1A7A6E;">PMS Malta</div>
-        <div>Preventive Maintenance Services</div>
-        <div>matthew.schembri@cantab.net</div>
-      </div>
-    </div>
-    <div style="display:flex;gap:20px;margin-bottom:24px;padding:12px 16px;background:#F7F9FB;border-radius:8px;">
-      <div style="text-align:center;"><div style="font-size:22px;font-weight:800;color:#0F1923;">\${me.length}</div><div style="font-size:11px;color:#64748B;text-transform:uppercase;">Total events</div></div>
-      <div style="text-align:center;"><div style="font-size:22px;font-weight:800;color:#1A7A4A;">\${me.filter(e=>e.rag==="green").length}</div><div style="font-size:11px;color:#64748B;text-transform:uppercase;">Satisfactory</div></div>
-      <div style="text-align:center;"><div style="font-size:22px;font-weight:800;color:#D4920A;">\${me.filter(e=>e.rag==="amber").length}</div><div style="font-size:11px;color:#64748B;text-transform:uppercase;">Attention</div></div>
-      <div style="text-align:center;"><div style="font-size:22px;font-weight:800;color:#C0392B;">\${me.filter(e=>e.rag==="red").length}</div><div style="font-size:11px;color:#64748B;text-transform:uppercase;">Urgent</div></div>
-    </div>
-    \${propBlocks}
-    <div style="margin-top:30px;padding-top:14px;border-top:1px solid #E2E8F0;font-size:11px;color:#64748B;">
-      Report generated \${new Date().toLocaleDateString("en-GB",{day:"numeric",month:"long",year:"numeric"})} · PMS Malta · Confidential — for property owner use only
-    </div>
-    </body></html>\`;
-    const w=window.open("","_blank");w.document.write(html);w.document.close();setTimeout(()=>w.print(),500);
+    const ragLabel={red:"URGENT",amber:"ATTENTION",green:"SATISFACTORY"};
+    const ragCol={red:"#C0392B",amber:"#D4920A",green:"#1A7A4A"};
+
+    let body="";
+    Object.values(byProp).forEach(function(prop){
+      body+="<div style='margin-bottom:30px;page-break-inside:avoid;'>";
+      body+="<div style='font-size:16px;font-weight:800;color:#0F1923;border-bottom:2px solid #1A7A6E;padding-bottom:6px;margin-bottom:14px;'>"+prop.name+"</div>";
+      Object.values(prop.areas).forEach(function(area){
+        body+="<div style='margin-bottom:16px;'>";
+        body+="<div style='font-size:13px;font-weight:700;color:#1A7A6E;padding:6px 10px;background:#E6F4F2;border-radius:6px;margin-bottom:8px;'>"+area.name+"</div>";
+        body+="<table style='width:100%;border-collapse:collapse;font-family:Arial,sans-serif;'>";
+        body+="<thead><tr style='background:#F7F9FB;'><th style='padding:7px 6px;font-size:11px;color:#64748B;text-align:left;'>Date</th><th style='padding:7px 6px;font-size:11px;color:#64748B;text-align:left;'>Room</th><th style='padding:7px 6px;font-size:11px;color:#64748B;text-align:left;'>Task</th><th style='padding:7px 6px;font-size:11px;color:#64748B;text-align:left;'>Status</th><th style='padding:7px 6px;font-size:11px;color:#64748B;text-align:left;'>Technician Notes</th></tr></thead><tbody>";
+        area.events.forEach(function(ev){
+          var note=ev.note||ev.notes||"";
+          var taskName=ev.title||ev.task_name||(ev.tasks&&ev.tasks.name)||"";
+          var qs=ev.quote_status;
+          var qsHtml=qs==="approved"||qs==="sent"?"<br><span style='font-size:11px;font-weight:700;color:#1A7A4A;'>Quote approved - works completed</span>":qs==="requested"?"<br><span style='font-size:11px;font-weight:700;color:#D4920A;'>Quote requested - awaiting response</span>":"";
+          body+="<tr style='border-bottom:1px solid #E2E8F0;'>";
+          body+="<td style='padding:8px 6px;font-size:12px;color:#64748B;'>"+(ev.completed_at?ev.completed_at.slice(0,10):"")+"</td>";
+          body+="<td style='padding:8px 6px;font-size:12px;'>"+(ev.rooms?ev.rooms.name:"")+"</td>";
+          body+="<td style='padding:8px 6px;font-size:13px;font-weight:600;'>"+taskName+"</td>";
+          body+="<td style='padding:8px 6px;font-size:12px;font-weight:700;color:"+(ragCol[ev.rag]||"#64748B")+";'>"+((ragLabel[ev.rag])||ev.rag)+"</td>";
+          body+="<td style='padding:8px 6px;font-size:12px;color:#2C3E50;line-height:1.5;'>"+note+qsHtml+"</td>";
+          body+="</tr>";
+        });
+        body+="</tbody></table></div>";
+      });
+      body+="</div>";
+    });
+
+    var red=me.filter(function(e){return e.rag==="red";}).length;
+    var amber=me.filter(function(e){return e.rag==="amber";}).length;
+    var green=me.filter(function(e){return e.rag==="green";}).length;
+    var dateStr=new Date().toLocaleDateString("en-GB",{day:"numeric",month:"long",year:"numeric"});
+
+    var doc="<!DOCTYPE html><html><head><meta charset='UTF-8'><title>PPM Report - "+m+"</title>";
+    doc+="<style>@media print{body{margin:0;}@page{margin:20mm;}} body{font-family:Arial,sans-serif;color:#0F1923;padding:30px;max-width:900px;margin:0 auto;}</style>";
+    doc+="</head><body>";
+    doc+="<div style='display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px;padding-bottom:16px;border-bottom:3px solid #0F1923;'>";
+    doc+="<div><div style='font-size:22px;font-weight:800;'>PPM Inspection Report</div>";
+    doc+="<div style='font-size:15px;color:#1A7A6E;font-weight:700;margin-top:4px;'>"+m+" &middot; "+propName+"</div>";
+    doc+="<div style='font-size:12px;color:#64748B;margin-top:4px;'>Prepared by PMS Malta &middot; Matthew Schembri &middot; +356 79680343</div></div>";
+    doc+="<div style='text-align:right;font-size:11px;color:#64748B;'><div style='font-size:20px;font-weight:800;color:#1A7A6E;'>PMS Malta</div><div>matthew.schembri@cantab.net</div></div>";
+    doc+="</div>";
+    doc+="<div style='display:flex;gap:20px;margin-bottom:24px;padding:12px 16px;background:#F7F9FB;border-radius:8px;'>";
+    doc+="<div style='text-align:center;'><div style='font-size:22px;font-weight:800;'>"+me.length+"</div><div style='font-size:11px;color:#64748B;text-transform:uppercase;'>Total events</div></div>";
+    doc+="<div style='text-align:center;'><div style='font-size:22px;font-weight:800;color:#1A7A4A;'>"+green+"</div><div style='font-size:11px;color:#64748B;text-transform:uppercase;'>Satisfactory</div></div>";
+    doc+="<div style='text-align:center;'><div style='font-size:22px;font-weight:800;color:#D4920A;'>"+amber+"</div><div style='font-size:11px;color:#64748B;text-transform:uppercase;'>Attention</div></div>";
+    doc+="<div style='text-align:center;'><div style='font-size:22px;font-weight:800;color:#C0392B;'>"+red+"</div><div style='font-size:11px;color:#64748B;text-transform:uppercase;'>Urgent</div></div>";
+    doc+="</div>";
+    doc+=body;
+    doc+="<div style='margin-top:30px;padding-top:14px;border-top:1px solid #E2E8F0;font-size:11px;color:#64748B;'>Report generated "+dateStr+" &middot; PMS Malta &middot; Confidential</div>";
+    doc+="</body></html>";
+
+    var w=window.open("","_blank");
+    if(w){w.document.write(doc);w.document.close();setTimeout(function(){w.print();},600);}
   };
 
   if(loading)return e(Spin,null);
