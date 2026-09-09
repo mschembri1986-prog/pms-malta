@@ -489,12 +489,74 @@ function areaRag(events,areaId){
   if(ae.some(ev=>ev.rag==="amber"))return"amber";
   return"green";
 }
+// Parses demo room_id strings like "Rm 101–106", "Room 205", "Rm 301–304/601"
+// into the individual room numbers they cover.
+function parseRoomNumbers(roomIdStr){
+  if(!roomIdStr)return[];
+  const out=[];
+  String(roomIdStr).replace(/^Rm\s+/,"").replace(/^Room\s+/,"").split("/").forEach(part=>{
+    part=part.trim();
+    const range=part.match(/^(\d+)\s*[–\-]\s*(\d+)$/);
+    if(range){
+      const a=parseInt(range[1],10),b=parseInt(range[2],10);
+      for(let n=a;n<=b;n++)out.push(n);
+    }else{
+      const single=part.match(/(\d+)/);
+      if(single)out.push(parseInt(single[1],10));
+    }
+  });
+  return out;
+}
+function eventMatchesRoom(ev,roomNum){
+  if(!ev.room_id)return false;
+  return parseRoomNumbers(ev.room_id).includes(roomNum);
+}
+// Works for both demo mode (numeric room ids like "205") and real/Supabase
+// mode (opaque room record ids), falling back to exact match either way.
+function eventsForRoom(events,roomId){
+  const num=parseInt(roomId,10);
+  if(!isNaN(num)&&String(num)===String(roomId).trim()){
+    return events.filter(ev=>eventMatchesRoom(ev,num));
+  }
+  return events.filter(ev=>ev.room_id===roomId);
+}
 function roomRag(events,roomId){
-  const re=events.filter(ev=>ev.room_id===roomId);
+  const re=eventsForRoom(events,roomId);
   if(re.some(ev=>ev.rag==="red"))return"red";
   if(re.some(ev=>ev.rag==="amber"))return"amber";
   return"green";
 }
+// Shared task-ref → icon/category/preset lookup, used by the item registry
+// and by the room/area task grouping so icons stay consistent everywhere.
+const TASK_REF_META={
+  "W-01":{icon:"🌡",cat:"Plumbing",pid:"ip_tmv"},
+  "W-03":{icon:"🚿",cat:"Plumbing",pid:"ip_shower_head"},
+  "D-01":{icon:"🚰",cat:"Plumbing",pid:null},
+  "B-01":{icon:"🔬",cat:"Building Fabric",pid:null},
+  "B-02":{icon:"🛁",cat:"Building Fabric",pid:null},
+  "B-03":{icon:"🪨",cat:"Building Fabric",pid:null},
+  "E-01":{icon:"🔌",cat:"Electrical",pid:"ip_socket"},
+  "E-02":{icon:"💡",cat:"Electrical",pid:"ip_light"},
+  "E-DB":{icon:"⚡",cat:"Electrical",pid:"ip_db"},
+  "AC-1":{icon:"❄️",cat:"HVAC",pid:"ip_ac_split"},
+  "AC-2":{icon:"❄️",cat:"HVAC",pid:"ip_ac_split"},
+  "AP-1":{icon:"🌡",cat:"Kitchen",pid:null},
+  "P-01":{icon:"🏊",cat:"Pool",pid:"ip_pool_pump"},
+  "P-02":{icon:"🏊",cat:"Pool",pid:null},
+  "GEN":{icon:"🔋",cat:"Mechanical",pid:"ip_generator"},
+  "HPUMP":{icon:"🔄",cat:"HVAC",pid:"ip_heat_pump"},
+  "LEG":{icon:"🧪",cat:"Legionella",pid:"ip_calorifier"},
+  "FA-1":{icon:"🚨",cat:"Fire",pid:"ip_fire_alarm"},
+  "H-01":{icon:"🔦",cat:"Fire",pid:"ip_emlight"},
+  "H-02":{icon:"🚪",cat:"Fire",pid:null},
+  "H-03":{icon:"🧯",cat:"Fire",pid:"ip_extinguisher"},
+  "PEST-R":{icon:"🐀",cat:"Pest Control",pid:"ip_rodent_station"},
+  "PEST-F":{icon:"🦟",cat:"Pest Control",pid:null},
+  "K-01":{icon:"🌡",cat:"Kitchen",pid:null},
+  "K-02":{icon:"🚰",cat:"Kitchen",pid:null},
+  "K-04":{icon:"💨",cat:"Kitchen",pid:null},
+  "INSP":{icon:"📋",cat:"Building Fabric",pid:null},
+};
 
 // ── UI PRIMITIVES ──────────────────────────────────────────────────────────
 function RagDot({rag,size}){
@@ -1021,7 +1083,17 @@ function makeDemoDb(){
       const arList=DEMO_AREAS[propId]||[{id:"da_gen",prop_id:propId,name:"All Areas",icon:"🏠",has_rooms:false,sort_order:1,rag:"green"}];
       return arList.map(a=>({...a,rag:areaRagFromEvents(propId,a.id)}));
     },
-    async getRooms(){return[];},
+    async getRooms(propId,areaId){
+      const areaObj=(DEMO_AREAS[propId]||[]).find(a=>a.id===areaId);
+      if(!areaObj||!areaObj.has_rooms)return[];
+      const nums=new Set();
+      DEMO_EVENTS.forEach(ev=>{
+        if(ev.prop_id===propId&&ev.area_id===areaId&&ev.room_id){
+          parseRoomNumbers(ev.room_id).forEach(n=>nums.add(n));
+        }
+      });
+      return Array.from(nums).sort((a,b)=>a-b).map(n=>({id:String(n),name:"Room "+n,sub_name:null}));
+    },
     async getTasksForArea(){return[];},
     async getScheduleMonths(propId){return DEMO_SCHEDULE[propId]||{};},
     async getScheduleForMonth(){return[];},
@@ -1043,19 +1115,91 @@ function makeDemoDb(){
     async addTask(){return"dtk_new";},
     async getItemPresets(){return DEMO_ITEM_PRESETS;},
     async getItems(propId,areaId){
-      let items=[...DEMO_ITEMS];
-      if(propId)items=items.filter(i=>i.prop_id===propId);
-      if(areaId)items=items.filter(i=>i.area_id===areaId);
-      return items.map(item=>({
+      // Real registered items for this area
+      let registeredItems=[...DEMO_ITEMS];
+      if(propId)registeredItems=registeredItems.filter(i=>i.prop_id===propId);
+      if(areaId)registeredItems=registeredItems.filter(i=>i.area_id===areaId);
+      registeredItems=registeredItems.map(item=>({
         ...item,
         sub_items:DEMO_SUB_ITEMS.filter(s=>s.item_id===item.id),
         item_tasks:[],
+        _registered:true,
       }));
+
+      // Build virtual items from event task refs for this area
+      // Each unique task type (ref+name) becomes a virtual "item" grouping
+      const areaEvents=DEMO_EVENTS.filter(ev=>
+        (!propId||ev.prop_id===propId)&&(!areaId||ev.area_id===areaId));
+
+      // Group by task ref
+      const taskGroups={};
+      areaEvents.forEach(ev=>{
+        const ref=(ev.tasks&&ev.tasks.ref)||"MISC";
+        const name=(ev.tasks&&ev.tasks.name)||"Maintenance task";
+        const type=(ev.tasks&&ev.tasks.type)||"misc";
+        if(!taskGroups[ref])taskGroups[ref]={ref,name,type,events:[]};
+        taskGroups[ref].events.push(ev);
+      });
+
+      // Map task refs to item preset icons/categories (shared constant)
+      const refToPreset=TASK_REF_META;
+
+      // Create virtual items from task groups
+      // Skip refs that already have a registered item covering them
+      const regRefs=new Set(registeredItems.map(i=>i.preset_id).filter(Boolean));
+
+      const virtualItems=Object.values(taskGroups).map(grp=>{
+        const pm=refToPreset[grp.ref]||{icon:"📋",cat:"Maintenance",pid:null};
+        const rag=grp.events.some(e=>e.rag==="red")?"red":grp.events.some(e=>e.rag==="amber")?"amber":"green";
+        const lastEvent=grp.events[0];
+        return {
+          id:"vitem_"+grp.ref+"_"+(areaId||propId||"all"),
+          prop_id:propId,area_id:areaId,room_id:null,
+          preset_id:pm.pid,name:grp.name,
+          category:pm.cat,icon:pm.icon,
+          manufacturer:null,model:null,serial_number:null,year_of_mfr:null,
+          status:"active",notes:grp.events.length+" check"+(grp.events.length!==1?"s":"")+" recorded · Last: "+(lastEvent&&lastEvent.month_label||""),
+          sub_items:[],item_tasks:[],
+          _virtual:true,_ref:grp.ref,_rag:rag,_eventCount:grp.events.length,
+        };
+      });
+
+      // Merge: registered items first, then virtual items for task types not covered
+      const allItems=[...registeredItems,...virtualItems];
+
+      // Add _events to each item for use in OwnerItem
+      allItems.forEach(it=>{
+        if(it._virtual){
+          it._events=taskGroups[it._ref]?taskGroups[it._ref].events:[];
+        } else {
+          // For registered items, match events by preset category/ref patterns
+          it._events=areaEvents.filter(ev=>{
+            const ref=(ev.tasks&&ev.tasks.ref)||"";
+            if(it.preset_id==="ip_db")return ref.includes("DB")||ref==="E-DB";
+            if(it.preset_id==="ip_generator")return ref==="GEN";
+            if(it.preset_id==="ip_heat_pump")return ref==="HPUMP"||ref.includes("HP");
+            if(it.preset_id==="ip_pool_pump")return ref==="P-01"||ref==="P-02";
+            if(it.preset_id==="ip_fire_alarm")return ref==="FA-1"||ref.includes("FALRM");
+            if(it.preset_id==="ip_tmv")return ref==="W-01"&&(ev.room_id===it.room_id||(ev.rooms&&ev.rooms.name&&it.name&&it.name.includes(ev.rooms.name)));
+            if(it.preset_id==="ip_extinguisher")return ref==="H-03"||ref==="EX-01";
+            if(it.preset_id==="ip_rodent_station")return ref==="PEST-R";
+            return false;
+          });
+          it._rag=it._events.some(e=>e.rag==="red")?"red":it._events.some(e=>e.rag==="amber")?"amber":"green";
+          it._eventCount=it._events.length;
+        }
+      });
+
+      return allItems;
     },
     async addItem(d){DEMO_ITEMS.push({id:"di_new_"+Date.now(),...d,status:"active",sub_items:[],item_tasks:[]});return"di_new";},
     async updateItem(){},
     async addSubItem(itemId,d){DEMO_SUB_ITEMS.push({id:"dsi_new_"+Date.now(),item_id:itemId,...d,status:"active"});return"dsi_new";},
-    async getItemEvents(itemId){return DEMO_EVENTS.filter(e=>e.item_id===itemId);},
+    async getItemEvents(itemId,_events){
+      // _events passed directly from virtual item — fallback to item_id match
+      if(_events)return _events;
+      return DEMO_EVENTS.filter(e=>e.item_id===itemId);
+    },
   };
 }
 
@@ -1702,62 +1846,391 @@ function OwnerProp({user,propId,setView}){
 
 // ── OWNER AREA ─────────────────────────────────────────────────────────────
 function OwnerArea({user,propId,areaId,setView}){
-  const[prop,setProp]=useState(null);const[area,setArea]=useState(null);const[rooms,setRooms]=useState([]);const[events,setEvents]=useState([]);const[tasks,setTasks]=useState([]);const[tab,setTab]=useState("events");const[loading,setLoading]=useState(true);
-  useEffect(()=>{Promise.all([db.getProperties([propId]),db.getAreas(propId),db.getRooms(propId,areaId),db.getEvents({propId,areaId}),db.getTasksForArea(propId,areaId)]).then(([ps,areas,r,ev,t])=>{setProp(ps[0]);setArea(areas.find(a=>a.id===areaId));setRooms(r);setEvents(ev);setTasks(t);setLoading(false);});},[propId,areaId]);
-  if(loading)return e(Spin,null);if(!prop||!area)return null;
+  const[prop,setProp]=useState(null);
+  const[area,setArea]=useState(null);
+  const[rooms,setRooms]=useState([]);
+  const[events,setEvents]=useState([]);
+  const[loading,setLoading]=useState(true);
+
+  useEffect(()=>{
+    Promise.all([
+      db.getProperties([propId]),
+      db.getAreas(propId),
+      db.getRooms(propId,areaId),
+      db.getEvents({propId,areaId}),
+    ]).then(([ps,areas,r,ev])=>{
+      setProp(ps[0]);
+      setArea(areas.find(a=>a.id===areaId));
+      setRooms(r);
+      setEvents(ev);
+      setLoading(false);
+    });
+  },[propId,areaId]);
+
+  if(loading)return e(Spin,null);
+  if(!prop||!area)return null;
+
   const ar=areaRag(events,areaId);
   const areaEvents=events.filter(ev=>ev.area_id===areaId);
+  const urgent=areaEvents.filter(ev=>ev.rag==="red");
+  const attention=areaEvents.filter(ev=>ev.rag==="amber");
+  const complete=areaEvents.filter(ev=>ev.rag==="green");
+
   return e("div",null,
     e(SectionHead,{title:(area.icon||"")+" "+area.name,sub:prop.name,action:e(RagBadge,{rag:ar}),back:()=>setView({page:"o_prop",propId})}),
-    rooms.length>0&&e("div",null,
-      e("div",{style:{fontWeight:700,fontSize:14,marginBottom:10}},"Rooms"),
-      e(Grid,{cols:2,gap:8},
-        rooms.map(r=>{const rr=roomRag(events,r.id);const re=events.filter(ev=>ev.room_id===r.id);return e(Card,{key:r.id,onClick:()=>setView({page:"o_room",propId,areaId,roomId:r.id})},
-          e("div",{style:{display:"flex",justifyContent:"space-between",marginBottom:4}},e("span",{style:{fontWeight:700,fontSize:14}},r.name),e(RagBadge,{rag:rr})),
-          e("div",{style:{fontSize:11,color:C.mid}},r.sub_name),
-          e("div",{style:{display:"flex",gap:8,fontSize:10,marginTop:4}},e("span",{style:{color:C.red}},"✕"+re.filter(ev=>ev.rag==="red").length),e("span",{style:{color:C.amber}},"⚠"+re.filter(ev=>ev.rag==="amber").length),e("span",{style:{color:C.green}},"✓"+re.filter(ev=>ev.rag==="green").length)));
-        })),
-      e("div",{style:{height:14}})),
-    e("div",{style:{display:"flex",gap:6,marginBottom:14}},
-      [["events","Events ("+areaEvents.length+")"],["schedule","Planned tasks ("+tasks.length+")"]].map(([id,l])=>e("button",{key:id,onClick:()=>setTab(id),style:{padding:"6px 16px",borderRadius:20,border:"1.5px solid "+(tab===id?C.teal:C.line),background:tab===id?C.teal:C.white,color:tab===id?C.white:C.mid,fontSize:12,fontWeight:600,cursor:"pointer"}},l))),
-    tab==="events"&&e("div",null,
-      areaEvents.length===0&&e(Card,null,e("div",{style:{fontSize:13,color:C.mid,padding:"12px 0",textAlign:"center"}},"No events yet for this area.")),
-      // Amber and red — full EventCard with description
-      areaEvents.filter(ev=>ev.rag!=="green").length>0&&e("div",{style:{marginBottom:14}},
-        e("div",{style:{fontSize:11,fontWeight:700,color:C.mid,textTransform:"uppercase",letterSpacing:0.5,marginBottom:8}},"Requires attention"),
-        areaEvents.filter(ev=>ev.rag!=="green").map(ev=>e(EventCard,{key:ev.id,event:ev,showActions:true}))),
-      // Green — compact count + list, no full descriptions
-      areaEvents.filter(ev=>ev.rag==="green").length>0&&e(Card,null,
-        e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}},
-          e("div",{style:{fontSize:13,fontWeight:700,color:C.green}},"✓ "+areaEvents.filter(ev=>ev.rag==="green").length+" tasks completed satisfactorily"),
-          e("span",{style:{fontSize:11,color:C.mid}})),
-        areaEvents.filter(ev=>ev.rag==="green").map(ev=>e("div",{key:ev.id,style:{display:"flex",alignItems:"center",gap:8,padding:"6px 0",borderBottom:"1px solid "+C.line}},
-          e("div",{style:{width:7,height:7,borderRadius:"50%",background:C.green,flexShrink:0}}),
-          e("div",{style:{flex:1}},
-            e("div",{style:{fontSize:13,color:C.text}},ev.title||ev.task_name||(ev.tasks&&ev.tasks.name)||"Task"),
-            e("div",{style:{fontSize:11,color:C.mid}},ev.completed_at?ev.completed_at.slice(0,10):"")))))),
-    tab==="schedule"&&e(Card,null,
-      e("div",{style:{fontSize:12,color:C.mid,marginBottom:12}},"Tasks performed on every visit"),
-      tasks.map(t=>e("div",{key:t.id,style:{display:"flex",alignItems:"flex-start",gap:10,padding:"9px 0",borderBottom:"1px solid "+C.line}},
-        e("div",{style:{width:8,height:8,borderRadius:"50%",background:C.teal,flexShrink:0,marginTop:5}}),
-        e("div",{style:{flex:1}},e("div",{style:{fontSize:13,fontWeight:600}},t.name),e("div",{style:{fontSize:12,color:C.mid,marginTop:2}},t.description)),
-        e("div",{style:{display:"flex",flexDirection:"column",gap:4,alignItems:"flex-end"}},e(TypeBadge,{type:t.type}),e("span",{style:{fontSize:10,color:C.mid}},t.frequency))))));
-}
 
+    // Stat summary
+    e(Grid,{cols:3,gap:8,style:{marginBottom:16}},
+      e(Card,{style:{borderLeft:"3px solid "+C.red}},e(StatBox,{label:"Urgent",value:urgent.length,rag:"red"})),
+      e(Card,{style:{borderLeft:"3px solid "+C.amber}},e(StatBox,{label:"Attention",value:attention.length,rag:"amber"})),
+      e(Card,{style:{borderLeft:"3px solid "+C.green}},e(StatBox,{label:"Complete",value:complete.length,rag:"green"}))),
+
+    // ── ROOMS (primary navigation) ────────────────────────────────────
+    rooms.length>0&&e("div",{style:{marginBottom:20}},
+      e("div",{style:{fontWeight:700,fontSize:14,marginBottom:10,color:C.nav}},area.name+" — Rooms"),
+      e("div",{style:{border:"1px solid "+C.line,borderRadius:10,overflow:"hidden"}},
+        rooms.map(function(r,i){
+          const rr=roomRag(events,r.id);
+          const re=eventsForRoom(events,r.id);
+          const rRed=re.filter(ev=>ev.rag==="red").length;
+          const rAmber=re.filter(ev=>ev.rag==="amber").length;
+          const rGreen=re.filter(ev=>ev.rag==="green").length;
+          return e("div",{key:r.id,
+            onClick:()=>setView({page:"o_room",propId,areaId,roomId:r.id}),
+            style:{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",
+              borderBottom:i<rooms.length-1?"1px solid "+C.line:"none",
+              cursor:"pointer",background:C.white}},
+            e("div",{style:{flex:1}},
+              e("div",{style:{fontWeight:700,fontSize:14,color:C.text}},r.name),
+              r.sub_name&&e("div",{style:{fontSize:11,color:C.mid,marginTop:2}},r.sub_name),
+              e("div",{style:{display:"flex",gap:10,fontSize:11,marginTop:4}},
+                rRed>0&&e("span",{style:{color:C.red,fontWeight:700}},"✕ "+rRed+" urgent"),
+                rAmber>0&&e("span",{style:{color:C.amber,fontWeight:700}},"⚠ "+rAmber+" attention"),
+                e("span",{style:{color:C.green}},"✓ "+rGreen+" complete"))),
+            e("div",{style:{display:"flex",alignItems:"center",gap:8,flexShrink:0}},
+              e(RagBadge,{rag:rr}),
+              e("span",{style:{fontSize:14,color:C.mid}},"›")));
+        }))),
+
+    // ── AREA-LEVEL TASKS (no room — e.g. plant room, pool, reception) ─
+    areaEvents.filter(ev=>!ev.room_id).length>0&&e("div",{style:{marginBottom:8}},
+      e("div",{style:{fontWeight:700,fontSize:14,marginBottom:10,color:C.nav}},area.icon+" "+area.name+" — Area tasks"),
+      e("div",{style:{border:"1px solid "+C.line,borderRadius:10,overflow:"hidden"}},
+        groupByTaskRef(areaEvents.filter(ev=>!ev.room_id)).map(function(grp){
+          return e(TaskGroupRow,{key:grp.ref,grp,
+            onClick:()=>setView({page:"o_taskgroup",propId,areaId,roomId:null,taskRef:grp.ref,taskName:grp.name,events:grp.events,backTo:{page:"o_area",propId,areaId}})});
+        }))));
+}
 // ── OWNER ROOM ─────────────────────────────────────────────────────────────
 function OwnerRoom({user,propId,areaId,roomId,setView}){
-  const[prop,setProp]=useState(null);const[area,setArea]=useState(null);const[room,setRoom]=useState(null);const[events,setEvents]=useState([]);const[loading,setLoading]=useState(true);
-  useEffect(()=>{Promise.all([db.getProperties([propId]),db.getAreas(propId),db.getRooms(propId,areaId),db.getEvents({propId,roomId})]).then(([ps,areas,rooms,ev])=>{setProp(ps[0]);setArea(areas.find(a=>a.id===areaId));setRoom(rooms.find(r=>r.id===roomId));setEvents(ev);setLoading(false);});},[propId,areaId,roomId]);
-  if(loading)return e(Spin,null);if(!prop||!area||!room)return null;
+  const[prop,setProp]=useState(null);
+  const[area,setArea]=useState(null);
+  const[room,setRoom]=useState(null);
+  const[events,setEvents]=useState([]);
+  const[loading,setLoading]=useState(true);
+
+  useEffect(()=>{
+    Promise.all([
+      db.getProperties([propId]),
+      db.getAreas(propId),
+      db.getRooms(propId,areaId),
+      db.getEvents({propId,areaId}),
+    ]).then(([ps,areas,rooms,ev])=>{
+      setProp(ps[0]);
+      setArea(areas.find(a=>a.id===areaId));
+      const rm=rooms.find(r=>r.id===roomId);
+      setRoom(rm||null);
+      // Events for this room — parses ranges like "Rm 101–106" so a check
+      // logged against a room group still shows up for each room in it.
+      const roomEvents=eventsForRoom(ev,roomId);
+      setEvents(roomEvents);
+      setLoading(false);
+    });
+  },[propId,areaId,roomId]);
+
+  if(loading)return e(Spin,null);
+  if(!prop||!area||!room)return null;
+
+  const rag=events.some(e=>e.rag==="red")?"red":events.some(e=>e.rag==="amber")?"amber":"green";
+  const taskGroups=groupByTaskRef(events);
+  const urgentAmber=events.filter(e=>e.rag!=="green");
+
   return e("div",null,
-    e(SectionHead,{title:room.name,sub:(room.sub_name||"")+" · "+area.name+" · "+prop.name,action:e(RagBadge,{rag:roomRag(events,roomId)}),back:()=>setView({page:"o_area",propId,areaId})}),
-    e(Grid,{cols:3,gap:10},
-      e(Card,null,e(StatBox,{label:"Events",value:events.length})),
-      e(Card,null,e(StatBox,{label:"Urgent",value:events.filter(ev=>ev.rag==="red").length,rag:"red"})),
-      e(Card,null,e(StatBox,{label:"Complete",value:events.filter(ev=>ev.rag==="green").length,rag:"green"}))),
-    e(Card,{style:{marginTop:14}},
-      e("div",{style:{fontWeight:700,fontSize:14,marginBottom:14}},room.name+" — full event history"),
-      events.length?events.map(ev=>e(EventCard,{key:ev.id,event:ev,showActions:true})):e("div",{style:{fontSize:13,color:C.mid}},"No events yet for this room.")));
+    e(SectionHead,{title:room.name,sub:(room.sub_name||"")+" · "+area.name+" · "+prop.name,action:e(RagBadge,{rag}),back:()=>setView({page:"o_area",propId,areaId})}),
+
+    // Stat summary
+    e(Grid,{cols:3,gap:8,style:{marginBottom:16}},
+      e(Card,{style:{borderLeft:"3px solid "+C.red}},e(StatBox,{label:"Urgent",value:events.filter(e=>e.rag==="red").length,rag:"red"})),
+      e(Card,{style:{borderLeft:"3px solid "+C.amber}},e(StatBox,{label:"Attention",value:events.filter(e=>e.rag==="amber").length,rag:"amber"})),
+      e(Card,{style:{borderLeft:"3px solid "+C.green}},e(StatBox,{label:"Complete",value:events.filter(e=>e.rag==="green").length,rag:"green"}))),
+
+    // Issues banner (amber/red) — show inline so owner sees problems at a glance
+    urgentAmber.length>0&&e("div",{style:{marginBottom:16,padding:"10px 14px",background:C.redL,borderRadius:8,borderLeft:"4px solid "+C.red}},
+      e("div",{style:{fontSize:11,fontWeight:700,color:C.red,textTransform:"uppercase",letterSpacing:0.5,marginBottom:6}},"Issues to review — "+urgentAmber.length+" finding"+(urgentAmber.length>1?"s":"")),
+      urgentAmber.map(ev=>e("div",{key:ev.id,
+        onClick:()=>setView({page:"o_event",event:ev,backTo:{page:"o_room",propId,areaId,roomId}}),
+        style:{display:"flex",alignItems:"center",gap:8,padding:"5px 0",cursor:"pointer"}},
+        e("div",{style:{width:8,height:8,borderRadius:"50%",background:ev.rag==="red"?C.red:C.amber,flexShrink:0}}),
+        e("div",{style:{flex:1}},
+          e("div",{style:{fontSize:12,fontWeight:600,color:C.text}},ev.title||ev.task_name||(ev.tasks&&ev.tasks.name)||"Issue"),
+          e("div",{style:{fontSize:11,color:C.mid}},(ev.note||ev.notes||"").slice(0,70)+"…")),
+        e("span",{style:{fontSize:13,color:C.mid}},"›")))),
+
+    // ── ITEMS — the main navigation: tap an item to see all tasks carried out on it ──
+    e("div",{style:{fontWeight:700,fontSize:14,marginBottom:10,color:C.nav}},room.name+" — Items"),
+    e("div",{style:{border:"1px solid "+C.line,borderRadius:10,overflow:"hidden"}},
+      taskGroups.length===0&&e("div",{style:{padding:24,textAlign:"center",color:C.mid}},"No items recorded yet for this room."),
+      taskGroups.map(function(grp){
+        return e(TaskGroupRow,{key:grp.ref,grp,
+          onClick:()=>setView({page:"o_taskgroup",propId,areaId,roomId,taskRef:grp.ref,taskName:grp.name,events:grp.events,backTo:{page:"o_room",propId,areaId,roomId}})});
+      })));
+}
+// ── TASK GROUP HELPER ──────────────────────────────────────────────────────
+function groupByTaskRef(events){
+  // Returns [{ref, name, icon, type, rag, count, events}] sorted by RAG then name
+  const groups={};
+  events.forEach(ev=>{
+    const ref=(ev.tasks&&ev.tasks.ref)||"MISC";
+    const name=ev.title||ev.task_name||(ev.tasks&&ev.tasks.name)||"Maintenance";
+    const type=(ev.tasks&&ev.tasks.type)||"misc";
+    if(!groups[ref]){
+      const iconMap={hydro:"🚿",elec:"🔌",hvac:"❄️",pool:"🏊",fire:"🚨",pest:"🐀",misc:"📋",mech:"🔧",plumb:"🔧"};
+      const icon=(TASK_REF_META[ref]&&TASK_REF_META[ref].icon)||iconMap[type]||"📋";
+      groups[ref]={ref,name,icon,type,events:[],_rag:"green",count:0};
+    }
+    // Keep shortest/cleanest task name
+    if(name.replace(/—.*$/,"").trim().length<groups[ref].name.replace(/—.*$/,"").trim().length){
+      groups[ref].name=name;
+    }
+    groups[ref].events.push(ev);
+    groups[ref].count++;
+  });
+  // Compute RAG per group
+  Object.values(groups).forEach(g=>{
+    if(g.events.some(e=>e.rag==="red"))g._rag="red";
+    else if(g.events.some(e=>e.rag==="amber"))g._rag="amber";
+  });
+  // Sort: red first, amber, green, then alpha
+  return Object.values(groups).sort((a,b)=>{
+    const rOrder={red:0,amber:1,green:2};
+    return (rOrder[a._rag]||2)-(rOrder[b._rag]||2)||a.name.localeCompare(b.name);
+  });
+}
+
+// ── TASK GROUP ROW — reusable tappable row ────────────────────────────────
+function TaskGroupRow({grp,onClick}){
+  const ragColor={red:C.red,amber:C.amber,green:C.green}[grp._rag]||C.mid;
+  const latest=grp.events[0];
+  return e("div",{onClick,style:{display:"flex",alignItems:"center",gap:12,padding:"11px 14px",borderBottom:"1px solid "+C.line,cursor:"pointer",background:C.white}},
+    e("span",{style:{fontSize:20,flexShrink:0}},grp.icon),
+    e("div",{style:{flex:1,minWidth:0}},
+      e("div",{style:{fontWeight:600,fontSize:13,color:C.text,marginBottom:2}},grp.name),
+      e("div",{style:{fontSize:11,color:C.mid}},grp.count+" check"+(grp.count!==1?"s":"")+(latest?" · Last: "+(latest.month_label||latest.completed_at&&latest.completed_at.slice(0,10)||""):"")),
+      grp._rag!=="green"&&e("div",{style:{fontSize:11,fontWeight:700,color:ragColor,marginTop:2}},
+        grp.events.filter(e=>e.rag!=="green").map(ev=>(ev.note||ev.notes||"").slice(0,60)).filter(Boolean)[0]||"")),
+    e("div",{style:{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4,flexShrink:0}},
+      e(RagBadge,{rag:grp._rag}),
+      e("span",{style:{fontSize:14,color:C.mid}},"›")));
+}
+
+
+// ── OWNER TASK GROUP ───────────────────────────────────────────────────────
+// Shows all checks for ONE task type (e.g. "Hot water temp check") with dates
+function OwnerTaskGroup({user,propId,areaId,roomId,taskRef,taskName,events:passedEvents,setView,backTo}){
+  // events are passed directly from the room view — no need to re-fetch
+  const sortedEvents=(passedEvents||[]).slice().sort((a,b)=>b.completed_at.localeCompare(a.completed_at));
+  const rag=sortedEvents.some(e=>e.rag==="red")?"red":sortedEvents.some(e=>e.rag==="amber")?"amber":"green";
+  const ragColor={red:C.red,amber:C.amber,green:C.green}[rag]||C.mid;
+
+  return e("div",null,
+    e(SectionHead,{title:taskName,sub:sortedEvents.length+" check"+(sortedEvents.length!==1?"s":"")+" recorded",action:e(RagBadge,{rag}),back:()=>setView(backTo)}),
+
+    // Summary bar
+    e("div",{style:{display:"flex",gap:20,padding:"10px 14px",background:C.bg,borderRadius:8,marginBottom:16,fontSize:12}},
+      e("span",{style:{color:C.red,fontWeight:700}},"✕ "+sortedEvents.filter(e=>e.rag==="red").length+" urgent"),
+      e("span",{style:{color:C.amber,fontWeight:700}},"⚠ "+sortedEvents.filter(e=>e.rag==="amber").length+" attention"),
+      e("span",{style:{color:C.green,fontWeight:700}},"✓ "+sortedEvents.filter(e=>e.rag==="green").length+" satisfactory")),
+
+    // Chronological list — newest first
+    e(Card,{style:{padding:0,overflow:"hidden"}},
+      sortedEvents.length===0&&e("div",{style:{padding:24,textAlign:"center",color:C.mid}},"No checks recorded yet."),
+      sortedEvents.map(function(ev,i){
+        const note=ev.note||ev.notes||"";
+        const ragColor2={red:C.red,amber:C.amber,green:C.green}[ev.rag]||C.mid;
+        return e("div",{key:ev.id,
+          onClick:()=>setView({page:"o_event",event:ev,backTo:{page:"o_taskgroup",propId,areaId,roomId,taskRef,taskName,events:passedEvents,backTo}}),
+          style:{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",
+            borderBottom:i<sortedEvents.length-1?"1px solid "+C.line:"none",
+            cursor:"pointer",background:i%2===0?C.white:"#FAFBFC"}},
+          e("div",{style:{width:10,height:10,borderRadius:"50%",background:ragColor2,flexShrink:0}}),
+          e("div",{style:{flex:1,minWidth:0}},
+            e("div",{style:{fontSize:13,fontWeight:700,color:C.text}},ev.month_label||(ev.completed_at&&ev.completed_at.slice(0,10))||""),
+            e("div",{style:{fontSize:11,color:C.mid,marginTop:1}},ev.completed_at?ev.completed_at.slice(0,10):""),
+            note&&e("div",{style:{fontSize:12,color:ev.rag==="green"?C.mid:ragColor2,marginTop:3,lineHeight:1.4}},
+              note.slice(0,90)+(note.length>90?"…":""))),
+          e("div",{style:{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4}},
+            e(RagBadge,{rag:ev.rag}),
+            (ev.quote_status==="requested"||ev.quote_status==="approved")&&e("span",{style:{fontSize:9,color:ev.quote_status==="approved"?C.green:C.amber,fontWeight:700}},ev.quote_status==="approved"?"RESOLVED":"QUOTE REQ'd"),
+            e("span",{style:{fontSize:14,color:C.mid}},"›"))
+        );
+      })));
+}
+
+
+
+// ── OWNER ITEM DETAIL ──────────────────────────────────────────────────────
+function OwnerItem({user,propId,areaId,itemId,setView,backTo}){
+  const[item,setItem]=useState(null);
+  const[events,setEvents]=useState([]);
+  const[loading,setLoading]=useState(true);
+
+  useEffect(()=>{
+    db.getItems(propId,areaId).then(items=>{
+      const it=items.find(i=>i.id===itemId);
+      setItem(it||null);
+      // Use pre-computed _events if available (virtual items), else fetch
+      const itEvs=it&&it._events?it._events:[];
+      setEvents(itEvs.sort((a,b)=>b.completed_at.localeCompare(a.completed_at)));
+      setLoading(false);
+    });
+  },[itemId]);
+
+  if(loading)return e(Spin,null);
+  if(!item)return e("div",null,e(SectionHead,{title:"Item",back:()=>setView(backTo||{page:"o_area",propId,areaId})}),e(Card,null,"Item not found."));
+
+  const subs=item.sub_items||[];
+  const itemRag=events.some(ev=>ev.rag==="red")?"red":events.some(ev=>ev.rag==="amber")?"amber":"green";
+
+  // Group events by task ref (more precise than name which can vary)
+  const taskGroups={};
+  events.forEach(ev=>{
+    const ref=(ev.tasks&&ev.tasks.ref)||"MISC";
+    const name=ev.title||ev.task_name||(ev.tasks&&ev.tasks.name)||"Task";
+    if(!taskGroups[ref])taskGroups[ref]={ref,name,events:[]};
+    // Use shortest name as group label
+    if(name.length<taskGroups[ref].name.length)taskGroups[ref].name=name;
+    taskGroups[ref].events.push(ev);
+  });
+
+  return e("div",null,
+    e(SectionHead,{title:item.name,sub:item.category,action:e(RagBadge,{rag:itemRag}),back:()=>setView(backTo||{page:"o_area",propId,areaId})}),
+
+    // Asset details card
+    e(Card,{style:{marginBottom:16}},
+      e("div",{style:{display:"flex",alignItems:"center",gap:12,marginBottom:12}},
+        e("span",{style:{fontSize:32}},item.icon||"📦"),
+        e("div",null,
+          e("div",{style:{fontWeight:800,fontSize:15,color:C.nav}},item.name),
+          e("div",{style:{fontSize:12,color:C.mid}},item.category))),
+      e("div",{style:{display:"flex",flexWrap:"wrap",gap:12,fontSize:12}},
+        item.manufacturer&&e("div",null,e("span",{style:{color:C.mid}},"Manufacturer  "),e("b",null,item.manufacturer)),
+        item.model&&e("div",null,e("span",{style:{color:C.mid}},"Model  "),e("b",null,item.model)),
+        item.year_of_mfr&&e("div",null,e("span",{style:{color:C.mid}},"Year  "),e("b",null,item.year_of_mfr)),
+        item.install_date&&e("div",null,e("span",{style:{color:C.mid}},"Installed  "),e("b",null,item.install_date))),
+      item.serial_number&&e("div",{style:{marginTop:8,padding:"5px 10px",background:"#F1F5F9",borderRadius:6,fontSize:12,fontFamily:"monospace",color:C.slate}},"S/N: "+item.serial_number),
+      item.notes&&e("div",{style:{marginTop:8,fontSize:12,color:C.mid,lineHeight:1.5,borderTop:"1px solid "+C.line,paddingTop:8}},item.notes),
+
+      // Sub-components
+      subs.length>0&&e("div",{style:{marginTop:12,borderTop:"1px solid "+C.line,paddingTop:10}},
+        e("div",{style:{fontSize:11,fontWeight:700,color:C.mid,textTransform:"uppercase",letterSpacing:0.5,marginBottom:8}},"Sub-components"),
+        subs.map(s=>e("div",{key:s.id,style:{display:"flex",gap:10,alignItems:"center",padding:"5px 0",borderBottom:"1px solid "+C.line}},
+          e("div",{style:{flex:1}},
+            e("div",{style:{fontSize:12,fontWeight:600,color:C.text}},s.name),
+            e("div",{style:{display:"flex",gap:8,fontSize:11,color:C.mid,marginTop:2}},
+              s.type&&e("span",null,s.type),
+              s.rating&&e("span",null,s.rating),
+              s.notes&&e("span",null,s.notes))),
+          s.serial_number&&e("span",{style:{fontSize:10,fontFamily:"monospace",color:C.mid,background:"#F1F5F9",padding:"1px 5px",borderRadius:3}},s.serial_number),
+          e("span",{style:{fontSize:10,padding:"2px 7px",borderRadius:10,background:s.status==="active"?C.greenL:C.amberL,color:s.status==="active"?C.green:C.amber,fontWeight:600}},s.status))))),
+
+    // Events grouped by task
+    e("div",{style:{marginBottom:8}},
+      e("div",{style:{fontWeight:700,fontSize:14,color:C.nav,marginBottom:12}},"Maintenance history"),
+      events.length===0&&e(Card,null,e("div",{style:{textAlign:"center",padding:24,color:C.mid}},"No maintenance events recorded yet for this item.")),
+      Object.entries(taskGroups).map(([taskName,grp])=>{
+        const grpRag=grp.events.some(ev=>ev.rag==="red")?"red":grp.events.some(ev=>ev.rag==="amber")?"amber":"green";
+        const latest=grp.events[0];
+        return e("div",{key:taskName,style:{marginBottom:12}},
+          e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 12px",background:C.nav,borderRadius:"8px 8px 0 0"}},
+            e("div",null,
+              grp.ref&&e("span",{style:{fontSize:10,color:"rgba(255,255,255,0.5)",fontWeight:700,marginRight:8}},grp.ref),
+              e("span",{style:{fontSize:13,fontWeight:700,color:C.white}},taskName)),
+            e("div",{style:{display:"flex",gap:8,alignItems:"center"}},
+              e(RagBadge,{rag:grpRag}),
+              e("span",{style:{fontSize:11,color:"rgba(255,255,255,0.5)"}},grp.events.length+" check"+(grp.events.length>1?"s":"")))),
+          grp.events.map((ev,i)=>e("div",{key:ev.id,
+            onClick:()=>setView({page:"o_event",event:ev,backTo:{page:"o_item",propId,areaId,itemId,backTo}}),
+            style:{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",
+              background:i%2===0?C.white:"#FAFBFC",
+              borderBottom:"1px solid "+C.line,
+              border:"1px solid "+C.line,borderTop:"none",
+              cursor:"pointer",
+              borderRadius:i===grp.events.length-1?"0 0 8px 8px":"0"}},
+            e("div",{style:{width:10,height:10,borderRadius:"50%",background:RAG[ev.rag]?RAG[ev.rag].dot:C.mid,flexShrink:0}}),
+            e("div",{style:{flex:1}},
+              e("div",{style:{fontSize:12,color:C.text,fontWeight:600}},ev.month_label||ev.completed_at&&ev.completed_at.slice(0,10)||""),
+              (ev.note||ev.notes)&&e("div",{style:{fontSize:11,color:C.mid,marginTop:2,lineHeight:1.4}},(ev.note||ev.notes||"").slice(0,80)+((ev.note||ev.notes||"").length>80?"…":""))),
+            e("span",{style:{fontSize:11,color:C.mid}},ev.completed_at?ev.completed_at.slice(0,10):""),
+            e("span",{style:{fontSize:14,color:C.mid}},"›"))));
+      })));
+}
+
+// ── OWNER EVENT DETAIL ─────────────────────────────────────────────────────
+function OwnerEventDetail({user,event:ev,setView,backTo}){
+  if(!ev)return e("div",null,e(SectionHead,{title:"Event",back:()=>setView(backTo||{page:"o_dash"})}),e(Card,null,"Event not found."));
+  const note=ev.note||ev.notes||"";
+  const taskName=ev.title||ev.task_name||(ev.tasks&&ev.tasks.name)||"Event";
+  const ragColor={red:C.red,amber:C.amber,green:C.green}[ev.rag]||C.mid;
+  const[actioned,setActioned]=useState(ev.quote_status&&ev.quote_status!=="none"?ev.quote_status:null);
+
+  return e("div",null,
+    e(SectionHead,{title:taskName,sub:ev.month_label||ev.completed_at&&ev.completed_at.slice(0,10)||"",action:e(RagBadge,{rag:ev.rag}),back:()=>setView(backTo||{page:"o_dash"})}),
+
+    // Status banner
+    e("div",{style:{padding:"10px 14px",borderRadius:8,marginBottom:14,
+      background:ev.rag==="red"?C.redL:ev.rag==="amber"?C.amberL:C.greenL,
+      borderLeft:"4px solid "+ragColor}},
+      e("div",{style:{fontWeight:700,fontSize:14,color:ragColor}},
+        ev.rag==="red"?"🔴 Urgent — requires immediate action":
+        ev.rag==="amber"?"🟡 Attention needed":
+        "🟢 Satisfactory — no action required"),
+      ev.completed_at&&e("div",{style:{fontSize:11,color:C.mid,marginTop:4}},"Recorded: "+ev.completed_at.slice(0,10))),
+
+    // Area / location
+    e(Card,{style:{marginBottom:14}},
+      e("div",{style:{fontSize:11,fontWeight:700,color:C.mid,textTransform:"uppercase",letterSpacing:0.5,marginBottom:8}},"Location"),
+      e("div",{style:{display:"flex",gap:8,flexWrap:"wrap",fontSize:12}},
+        ev.areas&&e("span",null,(ev.areas.icon||"")+" "+(ev.areas.name||"")),
+        ev.rooms&&e("span",{style:{color:C.mid}},"›  "+ev.rooms.name),
+        ev.tasks&&ev.tasks.ref&&e("span",{style:{fontWeight:700,color:C.teal,background:C.tealL,padding:"1px 8px",borderRadius:12}},ev.tasks.ref))),
+
+    // Technician report
+    note&&e(Card,{style:{marginBottom:14}},
+      e("div",{style:{fontSize:11,fontWeight:700,color:C.mid,textTransform:"uppercase",letterSpacing:0.5,marginBottom:8}},"Technician report"),
+      e("div",{style:{fontSize:14,color:C.slate,lineHeight:1.7}},note)),
+
+    // Photos
+    ev.photo_urls&&ev.photo_urls.filter(u=>u).length>0&&e(Card,{style:{marginBottom:14}},
+      e("div",{style:{fontSize:11,fontWeight:700,color:C.mid,textTransform:"uppercase",letterSpacing:0.5,marginBottom:10}},"Photos"),
+      e("div",{style:{display:"flex",gap:10,flexWrap:"wrap"}},
+        ev.photo_urls.filter(u=>u).map((url,i)=>{
+          const seed=(url.split("/seed/")[1]||"").split("/")[0]||("ph"+i);
+          return e(MockPhoto,{key:i,seed:seed,label:taskName.slice(0,14)});
+        }))),
+
+    // Quote status
+    (ev.quote_status==="approved"||ev.quote_status==="sent")&&e("div",{style:{padding:"12px 14px",borderRadius:8,background:C.greenL,marginBottom:14}},
+      e("div",{style:{fontWeight:700,color:C.green,fontSize:13}},"✓ Quote approved — remediation works completed"),
+      e("div",{style:{fontSize:12,color:C.mid,marginTop:4}},"This issue has been resolved and signed off.")),
+
+    // Actions
+    ev.rag!=="green"&&(!actioned||actioned==="none")&&e(Card,null,
+      e("div",{style:{fontSize:13,fontWeight:700,marginBottom:10}},"What would you like to do?"),
+      e("div",{style:{display:"flex",gap:10,flexWrap:"wrap"}},
+        e(Btn,{variant:"ghost",onClick:async()=>{await db.updateEvent(ev.id,{quote_status:"ack"});setActioned("ack");}},"Noted — no action required"),
+        e(Btn,{variant:"secondary",onClick:async()=>{await db.updateEvent(ev.id,{quote_status:"requested"});setActioned("requested");}},"Request quote from PMS Malta"))),
+    actioned&&actioned!=="none"&&ev.rag!=="green"&&e("div",{style:{padding:"10px 14px",borderRadius:8,background:actioned==="requested"?C.amberL:C.greenL,color:actioned==="requested"?C.amber:C.green,fontSize:13,fontWeight:600}},
+      actioned==="requested"?"✓ Quote requested — PMS Malta will be in touch":"✓ Noted — no further action"));
 }
 
 // ── OWNER SCHEDULE ─────────────────────────────────────────────────────────
@@ -2019,139 +2492,211 @@ function ReportEventList({monthEvents,props}){
 }
 
 function OwnerReports({user}){
-  const[events,setEvents]=useState([]);const[props,setProps]=useState([]);const[loading,setLoading]=useState(true);
-  const[selMonth,setSelMonth]=useState(null);const[selProp,setSelProp]=useState("all");
+  const[events,setEvents]=useState([]);
+  const[props,setProps]=useState([]);
+  const[areas,setAreas]=useState({});  // propId -> [area]
+  const[loading,setLoading]=useState(true);
+  const[selProp,setSelProp]=useState("all");
+  const[selArea,setSelArea]=useState(null);
   const propIds=user.prop_ids||[];
+
   useEffect(()=>{
-    Promise.all([db.getEvents(propIds.length?{propIds}:{}),db.getProperties(propIds.length?propIds:undefined)]).then(([ev,p])=>{setEvents(ev);setProps(p);setLoading(false);});
+    Promise.all([
+      db.getEvents(propIds.length?{propIds}:{}),
+      db.getProperties(propIds.length?propIds:undefined),
+    ]).then(([ev,ps])=>{
+      setEvents(ev);setProps(ps);
+      // Load areas for all properties
+      return Promise.all(ps.map(p=>db.getAreas(p.id).then(a=>({[p.id]:a}))));
+    }).then(areaResults=>{
+      const merged=Object.assign({},...areaResults);
+      setAreas(merged);setLoading(false);
+    });
   },[user.id]);
 
-  const printReport=(m,pId)=>{
-    const me=events.filter(ev=>ev.month_label===m&&(pId==="all"||ev.prop_id===pId));
-    const propName=pId==="all"?"All Properties":((props.find(p=>p.id===pId)||{}).name||"");
-    const byProp={};
-    me.forEach(ev=>{
-      const pid=ev.prop_id;
-      if(!byProp[pid])byProp[pid]={name:(props.find(p=>p.id===pid)||{}).name||pid,areas:{}};
-      const aid=ev.area_id||"general";
-      if(!byProp[pid].areas[aid])byProp[pid].areas[aid]={name:(ev.areas&&ev.areas.name)||"General",events:[]};
-      byProp[pid].areas[aid].events.push(ev);
-    });
+  const printReport=(propId,areaId)=>{
+    const prop=props.find(p=>p.id===propId)||{name:"All Properties",address:""};
+    let evs=events.filter(ev=>(!propId||propId==="all"||ev.prop_id===propId)&&(!areaId||ev.area_id===areaId));
+    const areaList=areaId?[(areas[propId]||[]).find(a=>a.id===areaId)].filter(Boolean):(areas[propId]||[]);
+    const areaLabel=areaId?((areas[propId]||[]).find(a=>a.id===areaId)||{}).name||"":"All Areas";
     const ragLabel={red:"URGENT",amber:"ATTENTION",green:"SATISFACTORY"};
     const ragCol={red:"#C0392B",amber:"#D4920A",green:"#1A7A4A"};
 
+    // Build HTML: grouped by area → room → task type
     let body="";
-    Object.values(byProp).forEach(function(prop){
-      body+="<div style='margin-bottom:30px;page-break-inside:avoid;'>";
-      body+="<div style='font-size:16px;font-weight:800;color:#0F1923;border-bottom:2px solid #1A7A6E;padding-bottom:6px;margin-bottom:14px;'>"+prop.name+"</div>";
-      Object.values(prop.areas).forEach(function(area){
-        body+="<div style='margin-bottom:16px;'>";
-        body+="<div style='font-size:13px;font-weight:700;color:#1A7A6E;padding:6px 10px;background:#E6F4F2;border-radius:6px;margin-bottom:8px;'>"+area.name+"</div>";
-        body+="<table style='width:100%;border-collapse:collapse;font-family:Arial,sans-serif;'>";
-        body+="<thead><tr style='background:#F7F9FB;'><th style='padding:7px 6px;font-size:11px;color:#64748B;text-align:left;'>Date</th><th style='padding:7px 6px;font-size:11px;color:#64748B;text-align:left;'>Room</th><th style='padding:7px 6px;font-size:11px;color:#64748B;text-align:left;'>Task</th><th style='padding:7px 6px;font-size:11px;color:#64748B;text-align:left;'>Status</th><th style='padding:7px 6px;font-size:11px;color:#64748B;text-align:left;'>Technician Notes</th></tr></thead><tbody>";
-        area.events.forEach(function(ev){
-          var note=ev.note||ev.notes||"";
-          var taskName=ev.title||ev.task_name||(ev.tasks&&ev.tasks.name)||"";
-          var qs=ev.quote_status;
-          var qsHtml=qs==="approved"||qs==="sent"?"<br><span style='font-size:11px;font-weight:700;color:#1A7A4A;'>Quote approved - works completed</span>":qs==="requested"?"<br><span style='font-size:11px;font-weight:700;color:#D4920A;'>Quote requested - awaiting response</span>":"";
-          body+="<tr style='border-bottom:1px solid #E2E8F0;'>";
-          body+="<td style='padding:8px 6px;font-size:12px;color:#64748B;'>"+(ev.completed_at?ev.completed_at.slice(0,10):"")+"</td>";
-          body+="<td style='padding:8px 6px;font-size:12px;'>"+(ev.rooms?ev.rooms.name:"")+"</td>";
-          body+="<td style='padding:8px 6px;font-size:13px;font-weight:600;'>"+taskName+"</td>";
-          body+="<td style='padding:8px 6px;font-size:12px;font-weight:700;color:"+(ragCol[ev.rag]||"#64748B")+";'>"+((ragLabel[ev.rag])||ev.rag)+"</td>";
-          body+="<td style='padding:8px 6px;font-size:12px;color:#2C3E50;line-height:1.5;'>"+note+qsHtml+"</td>";
-          body+="</tr>";
+    const areasToDo=areaId?areaList:(areas[propId]||[]);
+    areasToDo.forEach(function(area){
+      const aev=evs.filter(ev=>ev.area_id===area.id);
+      if(!aev.length)return;
+      body+="<div style='margin-bottom:28px;page-break-inside:avoid;'>";
+      body+="<div style='font-size:14px;font-weight:800;color:#1A7A6E;background:#E6F4F2;padding:8px 12px;border-radius:6px;margin-bottom:12px;'>"+(area.icon||"")+" "+area.name+"</div>";
+      // Group by room, then task ref within each room
+      const rooms={};
+      aev.forEach(function(ev){
+        const rk=ev.room_id||(ev.rooms&&ev.rooms.name)||"Area tasks";
+        if(!rooms[rk])rooms[rk]=[];
+        rooms[rk].push(ev);
+      });
+      Object.entries(rooms).forEach(function([roomName,revs]){
+        const taskGroups={};
+        revs.forEach(function(ev){
+          const ref=(ev.tasks&&ev.tasks.ref)||"MISC";
+          const name=ev.title||ev.task_name||(ev.tasks&&ev.tasks.name)||"Task";
+          if(!taskGroups[ref])taskGroups[ref]={ref,name,events:[]};
+          taskGroups[ref].events.push(ev);
         });
-        body+="</tbody></table></div>";
+        body+="<div style='margin-bottom:16px;'>";
+        if(roomName!=="Area tasks")body+="<div style='font-size:12px;font-weight:700;color:#0F1923;padding:5px 10px;background:#F5F7FA;border-radius:4px;margin-bottom:8px;'>"+roomName+"</div>";
+        Object.values(taskGroups).forEach(function(grp){
+          const grpRag=grp.events.some(e=>e.rag==="red")?"red":grp.events.some(e=>e.rag==="amber")?"amber":"green";
+          body+="<div style='margin-bottom:10px;border:1px solid #E2E8F0;border-radius:6px;overflow:hidden;'>";
+          body+="<div style='display:flex;justify-content:space-between;align-items:center;padding:6px 10px;background:#F7F9FB;'>";
+          body+="<span style='font-size:12px;font-weight:700;color:#2C3E50;'>"+grp.name+"</span>";
+          body+="<span style='font-size:10px;font-weight:700;color:"+ragCol[grpRag]+";'>"+ragLabel[grpRag]+"</span></div>";
+          body+="<table style='width:100%;border-collapse:collapse;font-family:Arial,sans-serif;'>";
+          body+="<thead><tr style='background:#FAFBFC;'><th style='padding:5px 8px;font-size:10px;color:#64748B;text-align:left;'>Date</th><th style='padding:5px 8px;font-size:10px;color:#64748B;text-align:left;'>Status</th><th style='padding:5px 8px;font-size:10px;color:#64748B;text-align:left;'>Technician notes</th></tr></thead><tbody>";
+          grp.events.slice().sort((a,b)=>b.completed_at.localeCompare(a.completed_at)).forEach(function(ev){
+            var note=ev.note||ev.notes||"";
+            var qs=ev.quote_status;
+            var qsHtml=qs==="approved"||qs==="sent"?"<span style='font-size:10px;font-weight:700;color:#1A7A4A;'> ✓ Works approved</span>":qs==="requested"?"<span style='font-size:10px;font-weight:700;color:#D4920A;'> ⏳ Quote requested</span>":"";
+            body+="<tr style='border-top:1px solid #E2E8F0;'>";
+            body+="<td style='padding:6px 8px;font-size:11px;color:#64748B;white-space:nowrap;'>"+(ev.completed_at?ev.completed_at.slice(0,10):"")+"</td>";
+            body+="<td style='padding:6px 8px;font-size:11px;font-weight:700;color:"+ragCol[ev.rag||"green"]+";'>"+ragLabel[ev.rag||"green"]+"</td>";
+            body+="<td style='padding:6px 8px;font-size:11px;color:#2C3E50;line-height:1.4;'>"+note+qsHtml+"</td>";
+            body+="</tr>";
+          });
+          body+="</tbody></table></div>";
+        });
+        body+="</div>";
       });
       body+="</div>";
     });
 
-    var red=me.filter(function(e){return e.rag==="red";}).length;
-    var amber=me.filter(function(e){return e.rag==="amber";}).length;
-    var green=me.filter(function(e){return e.rag==="green";}).length;
+    var red=evs.filter(e=>e.rag==="red").length;
+    var amber=evs.filter(e=>e.rag==="amber").length;
+    var green=evs.filter(e=>e.rag==="green").length;
     var dateStr=new Date().toLocaleDateString("en-GB",{day:"numeric",month:"long",year:"numeric"});
-
-    var doc="<!DOCTYPE html><html><head><meta charset='UTF-8'><title>PPM Report - "+m+"</title>";
-    doc+="<style>@media print{body{margin:0;}@page{margin:20mm;}} body{font-family:Arial,sans-serif;color:#0F1923;padding:30px;max-width:900px;margin:0 auto;}</style>";
-    doc+="</head><body>";
-    doc+="<div style='display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px;padding-bottom:16px;border-bottom:3px solid #0F1923;'>";
-    doc+="<div><div style='font-size:22px;font-weight:800;'>PPM Inspection Report</div>";
-    doc+="<div style='font-size:15px;color:#1A7A6E;font-weight:700;margin-top:4px;'>"+m+" &middot; "+propName+"</div>";
-    doc+="<div style='font-size:12px;color:#64748B;margin-top:4px;'>Prepared by PMS Malta &middot; Matthew Schembri &middot; +356 79680343</div></div>";
-    doc+="<div style='text-align:right;font-size:11px;color:#64748B;'><div style='font-size:20px;font-weight:800;color:#1A7A6E;'>PMS Malta</div><div>matthew.schembri@cantab.net</div></div>";
-    doc+="</div>";
-    doc+="<div style='display:flex;gap:20px;margin-bottom:24px;padding:12px 16px;background:#F7F9FB;border-radius:8px;'>";
-    doc+="<div style='text-align:center;'><div style='font-size:22px;font-weight:800;'>"+me.length+"</div><div style='font-size:11px;color:#64748B;text-transform:uppercase;'>Total events</div></div>";
-    doc+="<div style='text-align:center;'><div style='font-size:22px;font-weight:800;color:#1A7A4A;'>"+green+"</div><div style='font-size:11px;color:#64748B;text-transform:uppercase;'>Satisfactory</div></div>";
-    doc+="<div style='text-align:center;'><div style='font-size:22px;font-weight:800;color:#D4920A;'>"+amber+"</div><div style='font-size:11px;color:#64748B;text-transform:uppercase;'>Attention</div></div>";
-    doc+="<div style='text-align:center;'><div style='font-size:22px;font-weight:800;color:#C0392B;'>"+red+"</div><div style='font-size:11px;color:#64748B;text-transform:uppercase;'>Urgent</div></div>";
-    doc+="</div>";
-    doc+=body;
-    doc+="<div style='margin-top:30px;padding-top:14px;border-top:1px solid #E2E8F0;font-size:11px;color:#64748B;'>Report generated "+dateStr+" &middot; PMS Malta &middot; Confidential</div>";
+    var doc="<!DOCTYPE html><html><head><meta charset='UTF-8'><title>PPM Report</title>";
+    doc+="<style>@media print{body{margin:0;}@page{margin:18mm;}} body{font-family:Arial,sans-serif;color:#0F1923;padding:28px;max-width:900px;margin:0 auto;}</style></head><body>";
+    doc+="<div style='display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;padding-bottom:14px;border-bottom:3px solid #0F1923;'>";
+    doc+="<div><div style='font-size:20px;font-weight:800;'>PPM Inspection Report</div>";
+    doc+="<div style='font-size:13px;color:#1A7A6E;font-weight:700;margin-top:3px;'>"+prop.name+(areaLabel?" — "+areaLabel:"")+"</div>";
+    doc+="<div style='font-size:11px;color:#64748B;margin-top:2px;'>Generated "+dateStr+" &middot; PMS Malta &middot; Matthew Schembri &middot; +356 79680343</div></div>";
+    doc+="<div style='text-align:right;font-size:11px;color:#64748B;'><div style='font-size:18px;font-weight:800;color:#1A7A6E;'>PMS Malta</div><div>matthew.schembri@cantab.net</div></div></div>";
+    doc+="<div style='display:flex;gap:16px;margin-bottom:20px;padding:10px 14px;background:#F7F9FB;border-radius:8px;'>";
+    doc+="<div style='text-align:center;'><div style='font-size:20px;font-weight:800;'>"+evs.length+"</div><div style='font-size:10px;color:#64748B;text-transform:uppercase;'>Total</div></div>";
+    doc+="<div style='text-align:center;'><div style='font-size:20px;font-weight:800;color:#1A7A4A;'>"+green+"</div><div style='font-size:10px;color:#64748B;text-transform:uppercase;'>Satisfactory</div></div>";
+    doc+="<div style='text-align:center;'><div style='font-size:20px;font-weight:800;color:#D4920A;'>"+amber+"</div><div style='font-size:10px;color:#64748B;text-transform:uppercase;'>Attention</div></div>";
+    doc+="<div style='text-align:center;'><div style='font-size:20px;font-weight:800;color:#C0392B;'>"+red+"</div><div style='font-size:10px;color:#64748B;text-transform:uppercase;'>Urgent</div></div>";
+    doc+="</div>"+body;
+    doc+="<div style='margin-top:24px;padding-top:12px;border-top:1px solid #E2E8F0;font-size:10px;color:#64748B;'>PMS Malta &middot; Confidential &middot; For property owner use only</div>";
     doc+="</body></html>";
-
     var w=window.open("","_blank");
     if(w){w.document.write(doc);w.document.close();setTimeout(function(){w.print();},600);}
   };
 
   if(loading)return e(Spin,null);
-  const allMonths=[...new Set(events.map(ev=>ev.month_label).filter(Boolean))].sort((a,b)=>{
-    const parse=s=>{const[mon,yr]=s.split(" '");const mi=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"].indexOf(mon);return parseInt("20"+yr)*12+mi;};
-    return parse(a)-parse(b);
-  });
+
   const filtEvs=selProp==="all"?events:events.filter(ev=>ev.prop_id===selProp);
-  const months=[...new Set(filtEvs.map(ev=>ev.month_label).filter(Boolean))];
-  const monthEvents=selMonth?filtEvs.filter(ev=>ev.month_label===selMonth):[];
+  const selPropAreas=selProp!=="all"?(areas[selProp]||[]):[];
 
   return e("div",null,
-    e(SectionHead,{title:"Reports",sub:"PPM inspection reports by property and month",
-      action:selMonth?e(Btn,{variant:"ghost",small:true,onClick:()=>setSelMonth(null)},"← Back"):null}),
+    e(SectionHead,{title:"Reports",sub:"Inspection reports by property & area"}),
 
-    // Property filter pills
-    !selMonth&&e("div",{style:{display:"flex",gap:8,marginBottom:14,overflowX:"auto",paddingBottom:4}},
-      e("button",{onClick:()=>setSelProp("all"),
-        style:{padding:"7px 14px",borderRadius:20,border:"1.5px solid "+(selProp==="all"?C.teal:C.line),
-          background:selProp==="all"?C.teal:C.white,color:selProp==="all"?C.white:C.mid,
-          fontSize:12,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap"}},"All properties"),
-      props.map(p=>e("button",{key:p.id,onClick:()=>setSelProp(p.id),
-        style:{padding:"7px 14px",borderRadius:20,border:"1.5px solid "+(selProp===p.id?C.teal:C.line),
-          background:selProp===p.id?C.teal:C.white,color:selProp===p.id?C.white:C.mid,
-          fontSize:12,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap"}},p.name))),
+    // Property selector
+    e("div",{style:{display:"flex",gap:8,marginBottom:12,overflowX:"auto",paddingBottom:4}},
+      e("button",{onClick:()=>{setSelProp("all");setSelArea(null);},
+        style:{padding:"7px 14px",borderRadius:20,border:"1.5px solid "+(selProp==="all"?C.teal:C.line),background:selProp==="all"?C.teal:C.white,color:selProp==="all"?C.white:C.mid,fontSize:12,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap"}},"All properties"),
+      props.map(p=>e("button",{key:p.id,onClick:()=>{setSelProp(p.id);setSelArea(null);},
+        style:{padding:"7px 14px",borderRadius:20,border:"1.5px solid "+(selProp===p.id?C.teal:C.line),background:selProp===p.id?C.teal:C.white,color:selProp===p.id?C.white:C.mid,fontSize:12,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap"}},p.name))),
 
-    !selMonth&&e("div",null,
-      months.length===0&&e(Card,null,e("div",{style:{textAlign:"center",padding:32,color:C.mid}},"No reports available.")),
-      months.map(m=>{
-        const me=filtEvs.filter(ev=>ev.month_label===m);
-        // Group by property for summary
-        const propSummary={};
-        me.forEach(ev=>{if(!propSummary[ev.prop_id])propSummary[ev.prop_id]={name:(props.find(p=>p.id===ev.prop_id)||{}).name||ev.prop_id,red:0,amber:0,green:0};propSummary[ev.prop_id][ev.rag]=(propSummary[ev.prop_id][ev.rag]||0)+1;});
-        return e(Card,{key:m,style:{marginBottom:14}},
-          e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}},
-            e("div",{style:{fontSize:16,fontWeight:800}},m),
-            e("div",{style:{display:"flex",gap:8}},
-              e(Btn,{variant:"secondary",small:true,onClick:()=>setSelMonth(m)},"View events"),
-              e(Btn,{variant:"ghost",small:true,onClick:()=>printReport(m,selProp)},"🖨 Print report"))),
-          // Per-property summary
-          Object.values(propSummary).map(ps=>e("div",{key:ps.name,style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",borderBottom:"1px solid "+C.line}},
-            e("span",{style:{fontSize:12,fontWeight:700,color:C.text}},ps.name),
-            e("div",{style:{display:"flex",gap:10,fontSize:11}},
-              e("span",{style:{color:C.red}},"✕ "+ps.red),
-              e("span",{style:{color:C.amber}},"⚠ "+ps.amber),
-              e("span",{style:{color:C.green}},"✓ "+ps.green)))));
-      })),
+    // Area selector (when one property selected)
+    selProp!=="all"&&selPropAreas.length>0&&e("div",{style:{display:"flex",gap:8,marginBottom:14,overflowX:"auto",paddingBottom:4}},
+      e("button",{onClick:()=>setSelArea(null),
+        style:{padding:"5px 12px",borderRadius:16,border:"1.5px solid "+(!selArea?C.teal:C.line),background:!selArea?C.teal:C.white,color:!selArea?C.white:C.mid,fontSize:11,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap"}},"All areas"),
+      selPropAreas.map(a=>e("button",{key:a.id,onClick:()=>setSelArea(a.id),
+        style:{padding:"5px 12px",borderRadius:16,border:"1.5px solid "+(selArea===a.id?C.teal:C.line),background:selArea===a.id?C.teal:C.white,color:selArea===a.id?C.white:C.mid,fontSize:11,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap"}},(a.icon||"")+" "+a.name))),
 
-    selMonth&&e("div",null,
-      e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:8}},
-        e("div",null,
-          e("div",{style:{fontWeight:800,fontSize:18}},selMonth),
-          e("div",{style:{fontSize:12,color:C.mid}},monthEvents.length+" events · "+(selProp==="all"?"all properties":(props.find(p=>p.id===selProp)||{}).name||""))),
-        e(Btn,{variant:"primary",onClick:()=>printReport(selMonth,selProp)},"🖨 Print / Save PDF")),
+    // Print button
+    selProp!=="all"&&e(Btn,{variant:"primary",small:true,onClick:()=>printReport(selProp,selArea),style:{marginBottom:16}},"🖨 Print / Save PDF"),
 
-      // Group by property then area
-      e(ReportEventList,{monthEvents,props})));
+    // Report view — Area → Room → Task type → entries
+    (selProp==="all"?props:[props.find(p=>p.id===selProp)].filter(Boolean)).map(function(prop){
+      const pev=filtEvs.filter(ev=>ev.prop_id===prop.id&&(!selArea||ev.area_id===selArea));
+      if(!pev.length)return null;
+      const propRag=pev.some(e=>e.rag==="red")?"red":pev.some(e=>e.rag==="amber")?"amber":"green";
+      const propAreas=selArea?[(areas[prop.id]||[]).find(a=>a.id===selArea)].filter(Boolean):(areas[prop.id]||[]);
+
+      return e("div",{key:prop.id,style:{marginBottom:24}},
+        e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px",background:C.nav,borderRadius:"8px 8px 0 0"}},
+          e("div",null,
+            e("div",{style:{fontWeight:800,fontSize:15,color:C.white}},prop.name),
+            e("div",{style:{fontSize:11,color:"rgba(255,255,255,0.5)",marginTop:2}},prop.address)),
+          e("div",{style:{display:"flex",gap:8,alignItems:"center"}},
+            e(RagBadge,{rag:propRag}),
+            e("button",{onClick:()=>printReport(prop.id,selArea||null),
+              style:{padding:"5px 10px",borderRadius:6,border:"none",background:"rgba(255,255,255,0.15)",color:C.white,fontSize:11,fontWeight:600,cursor:"pointer"}},"🖨 Print"))),
+
+        // Areas → Rooms → Tasks
+        propAreas.map(function(area){
+          const aev=pev.filter(ev=>ev.area_id===area.id);
+          if(!aev.length)return null;
+          const areaRag2=aev.some(e=>e.rag==="red")?"red":aev.some(e=>e.rag==="amber")?"amber":"green";
+          const rooms2={};
+          aev.forEach(function(ev){
+            const rk=ev.room_id||(ev.rooms&&ev.rooms.name)||null;
+            const rLabel=rk||"Area tasks";
+            if(!rooms2[rLabel])rooms2[rLabel]=[];
+            rooms2[rLabel].push(ev);
+          });
+
+          return e("div",{key:area.id,style:{border:"1px solid "+C.line,borderTop:"none"}},
+            e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 14px",background:C.tealL}},
+              e("span",{style:{fontSize:13,fontWeight:700,color:C.teal}},(area.icon||"")+" "+area.name),
+              e("div",{style:{display:"flex",gap:8,alignItems:"center"}},
+                e(RagBadge,{rag:areaRag2}),
+                e("button",{onClick:()=>printReport(prop.id,area.id),
+                  style:{padding:"3px 8px",borderRadius:5,border:"1px solid "+C.teal,background:"transparent",color:C.teal,fontSize:10,fontWeight:600,cursor:"pointer"}},"🖨 Area report"))),
+
+            Object.entries(rooms2).map(function([roomLabel,revs]){
+              const taskGroups=groupByTaskRef(revs);
+              return e("div",{key:roomLabel,style:{borderTop:"1px solid "+C.line}},
+                roomLabel!=="Area tasks"&&e("div",{style:{padding:"6px 14px",background:"#F8FAFC",fontWeight:700,fontSize:12,color:C.nav}},roomLabel),
+                taskGroups.map(function(grp){
+                  return e(ReportTaskGroup,{key:grp.ref,grp});
+                }));
+            }));
+        }));
+    }));
 }
-
+// A real component (not an inline callback) so its useState is safe to call
+// however many times this list re-renders with a different number of items.
+function ReportTaskGroup({grp}){
+  const[open,setOpen]=useState(false);
+  return e("div",{style:{borderTop:"1px solid "+C.line}},
+    e("div",{onClick:()=>setOpen(o=>!o),
+      style:{display:"flex",alignItems:"center",gap:10,padding:"9px 14px",cursor:"pointer",background:open?"#F7F9FB":C.white}},
+      e("span",{style:{fontSize:16}},grp.icon),
+      e("div",{style:{flex:1}},
+        e("div",{style:{fontSize:12,fontWeight:600,color:C.text}},grp.name),
+        e("div",{style:{fontSize:10,color:C.mid}},grp.count+" check"+(grp.count!==1?"s":""))),
+      e("div",{style:{display:"flex",alignItems:"center",gap:6}},
+        e(RagBadge,{rag:grp._rag}),
+        e("span",{style:{color:C.mid,fontSize:12}},open?"▾":"▸"))),
+    open&&e("div",{style:{background:"#FAFBFC",borderTop:"1px solid "+C.line}},
+      grp.events.slice().sort((a,b)=>b.completed_at.localeCompare(a.completed_at)).map(function(ev){
+        const note=ev.note||ev.notes||"";
+        const ragColor2={red:C.red,amber:C.amber,green:C.green}[ev.rag]||C.mid;
+        return e("div",{key:ev.id,style:{display:"flex",gap:10,padding:"8px 14px 8px 28px",borderBottom:"1px solid "+C.line}},
+          e("div",{style:{width:8,height:8,borderRadius:"50%",background:ragColor2,flexShrink:0,marginTop:4}}),
+          e("div",{style:{flex:1}},
+            e("div",{style:{display:"flex",justifyContent:"space-between"}},
+              e("span",{style:{fontSize:11,fontWeight:700,color:C.text}},ev.month_label||(ev.completed_at&&ev.completed_at.slice(0,7))||""),
+              e("span",{style:{fontSize:10,color:ragColor2,fontWeight:700}},{red:"URGENT",amber:"ATTENTION",green:"OK"}[ev.rag]||"")),
+            note&&e("div",{style:{fontSize:11,color:C.mid,marginTop:2,lineHeight:1.5}},note),
+            (ev.quote_status==="approved"||ev.quote_status==="requested")&&e("div",{style:{fontSize:10,fontWeight:700,color:ev.quote_status==="approved"?C.green:C.amber,marginTop:2}},ev.quote_status==="approved"?"✓ Works approved & completed":"⏳ Quote requested")));
+      })));
+}
 // ── NAV CONFIG ─────────────────────────────────────────────────────────────
 const NAVS={
   admin:[{id:"a_dash",l:"Dashboard",i:"⊞"},{id:"a_cal",l:"Schedule",i:"📅"},{id:"a_events",l:"Events",i:"⚑"},{id:"a_manage",l:"Manage",i:"⚙️"}],
@@ -2193,6 +2738,9 @@ function App(){
       case"o_prop":   return e(OwnerProp,{user,propId:view.propId,setView});
       case"o_area":   return e(OwnerArea,{user,propId:view.propId,areaId:view.areaId,setView});
       case"o_room":   return e(OwnerRoom,{user,propId:view.propId,areaId:view.areaId,roomId:view.roomId,setView});
+      case"o_item":     return e(OwnerItem,{user,propId:view.propId,areaId:view.areaId,itemId:view.itemId,setView,backTo:view.backTo});
+      case"o_taskgroup":return e(OwnerTaskGroup,{user,propId:view.propId,areaId:view.areaId,roomId:view.roomId,taskRef:view.taskRef,taskName:view.taskName,events:view.events,setView,backTo:view.backTo});
+      case"o_event":    return e(OwnerEventDetail,{user,event:view.event,setView,backTo:view.backTo});
       case"o_sched":  return e(OwnerSchedule,{user});
       case"o_pend":   return e(OwnerPending,{user});
       case"o_rep":    return e(OwnerReports,{user});
