@@ -560,78 +560,2693 @@ function EventCard({event:ev,showActions,onAction}){
 // ── LOGIN ──────────────────────────────────────────────────────────────────
 // ── DEMO DATA (offline, no Supabase) ──────────────────────────────────────
 const DEMO_USERS={
-  "demo.admin":  {id:"du1",name:"Demo Admin",role:"admin",email:"demo.admin",prop_ids:[]},
-  "demo.hotel":  {id:"du2",name:"Mike Xuereb (Demo)",role:"owner",email:"demo.hotel",prop_ids:["dp1"]},
-  "demo.apts":   {id:"du3",name:"Anna Borg (Demo)",role:"owner",email:"demo.apts",prop_ids:["dp2","dp3","dp4","dp5","dp6"]},
-  "demo.tech":   {id:"du4",name:"Maurice Rizzo (Demo)",role:"tech",email:"demo.tech",prop_ids:[]},
+  "demo.admin": {id:"du1",name:"Demo Admin",role:"admin",email:"demo.admin",prop_ids:[]},
+  "demo.owner": {id:"du2",name:"Mr Antoine Borg",role:"owner",email:"demo.owner",prop_ids:["dp1","dp2","dp3","dp4","dp5","dp6","dp7","dp8"]},
+  "demo.tech":  {id:"du3",name:"Maurice Rizzo (Demo)",role:"tech",email:"demo.tech",prop_ids:[]},
 };
+
 const DEMO_PROPS=[
-  {id:"dp1",name:"Grand Harbour Hotel",address:"1 Triq il-Belt, Valletta",type:"Boutique Hotel",room_count:22,rag:"amber"},
-  {id:"dp2",name:"Apt 12A — Tigne Point",address:"12A Tigne Point, Sliema",type:"Apartment",room_count:3,rag:"green"},
-  {id:"dp3",name:"Apt 4 — St Julian's",address:"4 Triq San Ġiljan",type:"Apartment",room_count:2,rag:"red"},
-  {id:"dp4",name:"Apt 7B — Balluta Bay",address:"7B Balluta Bay, St Julian's",type:"Apartment",room_count:3,rag:"amber"},
-  {id:"dp5",name:"Apt 2 — Marsaskala",address:"2 Triq il-Baħar, Marsaskala",type:"Apartment",room_count:2,rag:"green"},
-  {id:"dp6",name:"Apt 9 — Mdina Road",address:"9 Mdina Road, Attard",type:"Apartment",room_count:2,rag:"green"},
+  {
+    "id": "dp1",
+    "name": "The Harbour Grand Hotel",
+    "address": "3 Triq il-Belt, Valletta VLT 1000",
+    "type": "Boutique Hotel",
+    "room_count": 22,
+    "rag": "amber"
+  },
+  {
+    "id": "dp2",
+    "name": "Villa Rosa Boutique Hotel",
+    "address": "12 Triq Santa Rita, Rabat RBT 2400",
+    "type": "Boutique Hotel",
+    "room_count": 18,
+    "rag": "green"
+  },
+  {
+    "id": "dp3",
+    "name": "Apt 4A \u2014 Tigne Point",
+    "address": "4A Tigne Point, Sliema SLM 3170",
+    "type": "Apartment",
+    "room_count": 3,
+    "rag": "green"
+  },
+  {
+    "id": "dp4",
+    "name": "Apt 7 \u2014 Balluta Bay",
+    "address": "7 Balluta Mansions, St Julian's STJ 1890",
+    "type": "Apartment",
+    "room_count": 2,
+    "rag": "amber"
+  },
+  {
+    "id": "dp5",
+    "name": "Apt 12 \u2014 Portomaso",
+    "address": "12 Portomaso Tower, St Julian's STJ 4011",
+    "type": "Apartment",
+    "room_count": 3,
+    "rag": "green"
+  },
+  {
+    "id": "dp6",
+    "name": "Apt 2B \u2014 Marsaskala",
+    "address": "2B Triq il-Ba\u0127ar, Marsaskala MSK 9020",
+    "type": "Apartment",
+    "room_count": 2,
+    "rag": "green"
+  },
+  {
+    "id": "dp7",
+    "name": "Apt 8 \u2014 Mdina Road",
+    "address": "8 Triq il-Mdina, Attard ATD 1550",
+    "type": "Apartment",
+    "room_count": 2,
+    "rag": "red"
+  },
+  {
+    "id": "dp8",
+    "name": "Apt 3 \u2014 Birgu Waterfront",
+    "address": "3 Triq il-Vittorja, Birgu BRG 1011",
+    "type": "Apartment",
+    "room_count": 2,
+    "rag": "green"
+  }
 ];
+
+const DEMO_AREAS={
+  "dp1": [
+    {
+      "id": "da1_1",
+      "prop_id": "dp1",
+      "name": "Guest Rooms",
+      "icon": "\ud83d\udecf",
+      "has_rooms": true,
+      "sort_order": 1,
+      "rag": "amber"
+    },
+    {
+      "id": "da1_2",
+      "prop_id": "dp1",
+      "name": "Roof & Plant",
+      "icon": "\u26a1",
+      "has_rooms": false,
+      "sort_order": 2,
+      "rag": "amber"
+    },
+    {
+      "id": "da1_3",
+      "prop_id": "dp1",
+      "name": "Pool Terrace",
+      "icon": "\ud83c\udfca",
+      "has_rooms": false,
+      "sort_order": 3,
+      "rag": "red"
+    },
+    {
+      "id": "da1_4",
+      "prop_id": "dp1",
+      "name": "Breakfast Area",
+      "icon": "\u2615",
+      "has_rooms": false,
+      "sort_order": 4,
+      "rag": "green"
+    },
+    {
+      "id": "da1_5",
+      "prop_id": "dp1",
+      "name": "Reception",
+      "icon": "\ud83c\udfe8",
+      "has_rooms": false,
+      "sort_order": 5,
+      "rag": "green"
+    }
+  ],
+  "dp2": [
+    {
+      "id": "da2_1",
+      "prop_id": "dp2",
+      "name": "Guest Rooms",
+      "icon": "\ud83d\udecf",
+      "has_rooms": true,
+      "sort_order": 1,
+      "rag": "green"
+    },
+    {
+      "id": "da2_2",
+      "prop_id": "dp2",
+      "name": "Plant Room",
+      "icon": "\u2699",
+      "has_rooms": false,
+      "sort_order": 2,
+      "rag": "green"
+    },
+    {
+      "id": "da2_3",
+      "prop_id": "dp2",
+      "name": "Garden & Pool",
+      "icon": "\ud83c\udf3f",
+      "has_rooms": false,
+      "sort_order": 3,
+      "rag": "green"
+    },
+    {
+      "id": "da2_4",
+      "prop_id": "dp2",
+      "name": "Kitchen",
+      "icon": "\ud83c\udf73",
+      "has_rooms": false,
+      "sort_order": 4,
+      "rag": "green"
+    }
+  ],
+  "dp3": [
+    {
+      "id": "da3_1",
+      "prop_id": "dp3",
+      "name": "All Areas",
+      "icon": "\ud83c\udfe0",
+      "has_rooms": false,
+      "sort_order": 1,
+      "rag": "green"
+    }
+  ],
+  "dp4": [
+    {
+      "id": "da4_1",
+      "prop_id": "dp4",
+      "name": "All Areas",
+      "icon": "\ud83c\udfe0",
+      "has_rooms": false,
+      "sort_order": 1,
+      "rag": "amber"
+    }
+  ],
+  "dp5": [
+    {
+      "id": "da5_1",
+      "prop_id": "dp5",
+      "name": "All Areas",
+      "icon": "\ud83c\udfe0",
+      "has_rooms": false,
+      "sort_order": 1,
+      "rag": "green"
+    }
+  ],
+  "dp6": [
+    {
+      "id": "da6_1",
+      "prop_id": "dp6",
+      "name": "All Areas",
+      "icon": "\ud83c\udfe0",
+      "has_rooms": false,
+      "sort_order": 1,
+      "rag": "green"
+    }
+  ],
+  "dp7": [
+    {
+      "id": "da7_1",
+      "prop_id": "dp7",
+      "name": "All Areas",
+      "icon": "\ud83c\udfe0",
+      "has_rooms": false,
+      "sort_order": 1,
+      "rag": "red"
+    }
+  ],
+  "dp8": [
+    {
+      "id": "da8_1",
+      "prop_id": "dp8",
+      "name": "All Areas",
+      "icon": "\ud83c\udfe0",
+      "has_rooms": false,
+      "sort_order": 1,
+      "rag": "green"
+    }
+  ]
+};
+
 const DEMO_EVENTS=[
-  // Hotel — red/urgent
-  {id:"dev1",prop_id:"dp1",area_id:"da1",room_id:"dr1",rag:"red",task_name:"Hot water temp check",note:"Temperature 43°C — below 50°C minimum (L.N. 5/2006). Legionella risk. Immediate action required.",completed_at:"2026-09-02T09:15:00Z",quote_status:"requested",month_label:"Sep '26",tasks:{name:"Hot water temp check",type:"hydro",ref:"W-01",description:"Check hot water at point of use. Must be ≥50°C."},areas:{name:"Guest Rooms",icon:"🛏"},rooms:{name:"Room 205"}},
-  {id:"dev2",prop_id:"dp1",area_id:"da2",room_id:null,rag:"red",task_name:"Electrical DB inspection",note:"Burnt terminal on MCB-7 (kitchen circuit). Smell of burning. Circuit isolated. Needs electrician urgently.",completed_at:"2026-09-02T11:00:00Z",quote_status:"requested",month_label:"Sep '26",tasks:{name:"Electrical DB inspection & IR scan",type:"elec",ref:"E-DB",description:"IR thermal scan and visual inspection of distribution board."},areas:{name:"Roof & Plant",icon:"⚡"},rooms:null},
-  {id:"dev3",prop_id:"dp1",area_id:"da3",room_id:null,rag:"red",task_name:"Pool chlorine check",note:"Free chlorine 0.54 mg/L — dangerously below 1.0 mg/L minimum. Pool closed. Shock treatment applied.",completed_at:"2026-09-01T08:30:00Z",quote_status:"none",month_label:"Sep '26",tasks:{name:"Pool water chemistry",type:"pool",ref:"P-01",description:"Free chlorine ≥1.0 mg/L, pH 7.2–7.6, TDS <2000."},areas:{name:"Pool Terrace",icon:"🏊"},rooms:null},
-  // Hotel — amber
-  {id:"dev4",prop_id:"dp1",area_id:"da1",room_id:"dr2",rag:"amber",task_name:"Mould inspection",note:"Active mould patch 15×20cm above shower tray. Biocide applied. Sealant replacement needed.",completed_at:"2026-09-02T10:00:00Z",quote_status:"none",month_label:"Sep '26",tasks:{name:"Mould inspection & biocide treatment",type:"hydro",ref:"B-01",description:"Inspect all surfaces for mould. Apply biocide and record."},areas:{name:"Guest Rooms",icon:"🛏"},rooms:{name:"Room 308"}},
-  {id:"dev5",prop_id:"dp1",area_id:"da4",room_id:null,rag:"amber",task_name:"Ventilation check",note:"Extraction fan in breakfast area making grinding noise. Airflow reduced. Fan motor likely failing.",completed_at:"2026-09-02T12:30:00Z",quote_status:"requested",month_label:"Sep '26",tasks:{name:"Ventilation & extraction check",type:"hvac",ref:"K-04",description:"Check kitchen and breakfast area extraction fans."},areas:{name:"Breakfast Area",icon:"☕"},rooms:null},
-  {id:"dev6",prop_id:"dp1",area_id:"da2",room_id:null,rag:"amber",task_name:"Generator test",note:"Generator started OK but low coolant warning light active. Topped up. Recommend service before peak season.",completed_at:"2026-09-01T14:00:00Z",quote_status:"none",month_label:"Sep '26",tasks:{name:"Generator load test & logbook",type:"misc",ref:"GEN",description:"10-minute load test under full load. Check coolant, oil, fuel."},areas:{name:"Roof & Plant",icon:"⚡"},rooms:null},
-  // Hotel — green
-  {id:"dev7",prop_id:"dp1",area_id:"da1",room_id:"dr3",rag:"green",task_name:"AC filter clean",note:"AC filter cleaned. Coil inspected — good. No issues.",completed_at:"2026-09-02T09:45:00Z",quote_status:"none",month_label:"Sep '26",tasks:{name:"AC filter clean & biocide",type:"hvac",ref:"AC-1",description:"Clean filter, biocide spray, check drain tray."},areas:{name:"Guest Rooms",icon:"🛏"},rooms:{name:"Room 101"}},
-  {id:"dev8",prop_id:"dp1",area_id:"da3",room_id:null,rag:"green",task_name:"Pool visual inspection",note:"Pool surrounds clean. Skimmer baskets emptied. Pump running normally.",completed_at:"2026-09-01T08:45:00Z",quote_status:"none",month_label:"Sep '26",tasks:{name:"Pool visual inspection",type:"pool",ref:"P-02",description:"Inspect waterline, skimmer, pump room and surrounds."},areas:{name:"Pool Terrace",icon:"🏊"},rooms:null},
-  // Apt 4 — red
-  {id:"dev9",prop_id:"dp3",area_id:"da5",room_id:null,rag:"red",task_name:"Water ingress",note:"Active water ingress through ceiling of bathroom. Water staining and plaster damage. Source unknown — may be roof or flat above.",completed_at:"2026-09-03T10:00:00Z",quote_status:"requested",month_label:"Sep '26",tasks:{name:"Building fabric inspection",type:"misc",ref:"B-03",description:"Inspect ceilings, walls and floors for damage or movement."},areas:{name:"Bathroom",icon:"🚿"},rooms:null},
-  // Apt 7B — amber
-  {id:"dev10",prop_id:"dp4",area_id:"da6",room_id:null,rag:"amber",task_name:"AC drain blockage",note:"AC drain tray overflowing into kitchen unit below. Cleared blockage. Recommend quarterly drain cleaning.",completed_at:"2026-09-04T11:30:00Z",quote_status:"none",month_label:"Sep '26",tasks:{name:"AC drain tray check",type:"hvac",ref:"AC-2",description:"Check drain tray, clear blockages, inspect coil condition."},areas:{name:"Living Area",icon:"🛋"},rooms:null},
-  // Apt 2 & 9 — green (all good)
-  {id:"dev11",prop_id:"dp2",area_id:"da7",room_id:null,rag:"green",task_name:"Full quarterly check",note:"All rooms inspected. Water temps good. No mould. Sealants in good condition. Electrics OK.",completed_at:"2026-09-05T09:00:00Z",quote_status:"none",month_label:"Sep '26",tasks:{name:"Quarterly room inspection",type:"misc",ref:"PPM",description:"Full room inspection — water, mould, fabric, electrical, HVAC."},areas:{name:"All Areas",icon:"🏠"},rooms:null},
-  {id:"dev12",prop_id:"dp5",area_id:"da8",room_id:null,rag:"green",task_name:"Full quarterly check",note:"All areas inspected and satisfactory. No issues to report.",completed_at:"2026-09-06T10:00:00Z",quote_status:"none",month_label:"Sep '26",tasks:{name:"Quarterly room inspection",type:"misc",ref:"PPM",description:"Full room inspection — water, mould, fabric, electrical, HVAC."},areas:{name:"All Areas",icon:"🏠"},rooms:null},
+  {
+    "id": "dev1",
+    "prop_id": "dp1",
+    "area_id": "da1_1",
+    "room_id": "Room 101",
+    "rag": "amber",
+    "quote_status": "none",
+    "completed_at": "2025-09-08T09:00:00Z",
+    "month_label": "Sep '25",
+    "tasks": {
+      "name": "Hot water temp check",
+      "type": "hydro",
+      "ref": "W-01",
+      "description": "Room 101 hot water measured at 47.2\u00b0C \u2014 below 50\u00b0C threshold. Boiler thermostat "
+    },
+    "areas": {
+      "name": "Guest Rooms",
+      "icon": "\ud83d\udecf"
+    },
+    "rooms": {
+      "name": "Room 101"
+    },
+    "note": "Room 101 hot water measured at 47.2\u00b0C \u2014 below 50\u00b0C threshold. Boiler thermostat adjusted to 60\u00b0C flow temp. Re-checked at 51.8\u00b0C after 20 min. Monitoring next visit.",
+    "photo_urls": [
+      "https://picsum.photos/seed/room-water-101/600/400"
+    ]
+  },
+  {
+    "id": "dev2",
+    "prop_id": "dp1",
+    "area_id": "da1_2",
+    "room_id": null,
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2025-09-08T09:00:00Z",
+    "month_label": "Sep '25",
+    "tasks": {
+      "name": "Generator load test",
+      "type": "misc",
+      "ref": "GEN",
+      "description": "10-minute load test completed at 80% rated load. Oil level good, coolant full, f"
+    },
+    "areas": {
+      "name": "Roof & Plant",
+      "icon": "\ud83d\udecf"
+    },
+    "rooms": null,
+    "note": "10-minute load test completed at 80% rated load. Oil level good, coolant full, fuel 85%. All parameters within spec. Logbook updated.",
+    "photo_urls": [
+      "https://picsum.photos/seed/generator-plant/600/400"
+    ]
+  },
+  {
+    "id": "dev3",
+    "prop_id": "dp1",
+    "area_id": "da1_3",
+    "room_id": null,
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2025-09-08T09:00:00Z",
+    "month_label": "Sep '25",
+    "tasks": {
+      "name": "Pool water chemistry",
+      "type": "pool",
+      "ref": "P-01",
+      "description": "Free chlorine 1.4 mg/L \u2713, pH 7.3 \u2713, TDS 980 mg/L \u2713, alkalinity 110 mg/L \u2713. Pool "
+    },
+    "areas": {
+      "name": "Pool Terrace",
+      "icon": "\ud83d\udecf"
+    },
+    "rooms": null,
+    "note": "Free chlorine 1.4 mg/L \u2713, pH 7.3 \u2713, TDS 980 mg/L \u2713, alkalinity 110 mg/L \u2713. Pool in excellent condition. Skimmer baskets cleaned.",
+    "photo_urls": [
+      "https://picsum.photos/seed/pool-blue/600/400"
+    ]
+  },
+  {
+    "id": "dev4",
+    "prop_id": "dp1",
+    "area_id": "da1_4",
+    "room_id": null,
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2025-09-08T09:00:00Z",
+    "month_label": "Sep '25",
+    "tasks": {
+      "name": "Refrigeration temp log",
+      "type": "misc",
+      "ref": "K-01",
+      "description": "All kitchen fridges logged: chiller 3.1\u00b0C \u2713, drinks fridge 4.2\u00b0C \u2713, dessert cabi"
+    },
+    "areas": {
+      "name": "Breakfast Area",
+      "icon": "\ud83d\udecf"
+    },
+    "rooms": null,
+    "note": "All kitchen fridges logged: chiller 3.1\u00b0C \u2713, drinks fridge 4.2\u00b0C \u2713, dessert cabinet 2.8\u00b0C \u2713. No issues.",
+    "photo_urls": [
+      "https://picsum.photos/seed/kitchen-fridge/600/400"
+    ]
+  },
+  {
+    "id": "dev5",
+    "prop_id": "dp1",
+    "area_id": "da1_1",
+    "room_id": "Room 205",
+    "rag": "red",
+    "quote_status": "requested",
+    "completed_at": "2025-10-12T09:00:00Z",
+    "month_label": "Oct '25",
+    "tasks": {
+      "name": "Mould inspection",
+      "type": "hydro",
+      "ref": "B-01",
+      "description": "Significant black mould 30\u00d740cm found behind bathroom vanity unit in Room 205. C"
+    },
+    "areas": {
+      "name": "Guest Rooms",
+      "icon": "\ud83d\udecf"
+    },
+    "rooms": {
+      "name": "Room 205"
+    },
+    "note": "Significant black mould 30\u00d740cm found behind bathroom vanity unit in Room 205. Cause identified as leaking waste pipe connection \u2014 slow drip saturating MDF unit. Biocide treatment applied (Kilz Pro). Waste pipe joint re-sealed with push-fit repair coupler. Vanity unit requires replacement \u2014 MDF substrate compromised. Photos taken.",
+    "photo_urls": [
+      "https://picsum.photos/seed/mould-bathroom-205/600/400"
+    ]
+  },
+  {
+    "id": "dev6",
+    "prop_id": "dp1",
+    "area_id": "da1_2",
+    "room_id": null,
+    "rag": "amber",
+    "quote_status": "none",
+    "completed_at": "2025-10-12T09:00:00Z",
+    "month_label": "Oct '25",
+    "tasks": {
+      "name": "Electrical DB inspection",
+      "type": "elec",
+      "ref": "E-DB",
+      "description": "Routine DB check identified MCB-12 (pool pump circuit) running warm \u2014 IR scan sh"
+    },
+    "areas": {
+      "name": "Roof & Plant",
+      "icon": "\ud83d\udecf"
+    },
+    "rooms": null,
+    "note": "Routine DB check identified MCB-12 (pool pump circuit) running warm \u2014 IR scan showed 42\u00b0C vs adjacent MCBs at 28\u00b0C. No burn marks. RCDs all tested and tripped correctly. Recommend load monitoring and MCB replacement on next bi-annual visit.",
+    "photo_urls": [
+      "https://picsum.photos/seed/electrical-db/600/400"
+    ]
+  },
+  {
+    "id": "dev7",
+    "prop_id": "dp1",
+    "area_id": "da1_3",
+    "room_id": null,
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2025-10-12T09:00:00Z",
+    "month_label": "Oct '25",
+    "tasks": {
+      "name": "Pool water chemistry",
+      "type": "pool",
+      "ref": "P-01",
+      "description": "Free chlorine 1.2 mg/L \u2713, pH 7.4 \u2713, TDS 1,020 mg/L \u2713. Algae inhibitor added as p"
+    },
+    "areas": {
+      "name": "Pool Terrace",
+      "icon": "\ud83d\udecf"
+    },
+    "rooms": null,
+    "note": "Free chlorine 1.2 mg/L \u2713, pH 7.4 \u2713, TDS 1,020 mg/L \u2713. Algae inhibitor added as preventive measure. Pool cover in good condition.",
+    "photo_urls": [
+      "https://picsum.photos/seed/pool-test/600/400"
+    ]
+  },
+  {
+    "id": "dev8",
+    "prop_id": "dp1",
+    "area_id": "da1_4",
+    "room_id": null,
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2025-10-12T09:00:00Z",
+    "month_label": "Oct '25",
+    "tasks": {
+      "name": "Ventilation check",
+      "type": "hvac",
+      "ref": "K-04",
+      "description": "Breakfast area extraction fan running smoothly at correct RPM. Filter cleaned \u2014 "
+    },
+    "areas": {
+      "name": "Breakfast Area",
+      "icon": "\ud83d\udecf"
+    },
+    "rooms": null,
+    "note": "Breakfast area extraction fan running smoothly at correct RPM. Filter cleaned \u2014 moderate grease build-up. Airflow measured at 0.8 m/s \u2014 within spec.",
+    "photo_urls": [
+      "https://picsum.photos/seed/vent-kitchen/600/400"
+    ]
+  },
+  {
+    "id": "dev9",
+    "prop_id": "dp1",
+    "area_id": "da1_1",
+    "room_id": "Room 205",
+    "rag": "green",
+    "quote_status": "approved",
+    "completed_at": "2025-11-16T09:00:00Z",
+    "month_label": "Nov '25",
+    "tasks": {
+      "name": "Mould inspection follow-up",
+      "type": "hydro",
+      "ref": "B-01",
+      "description": "Follow-up inspection Room 205: vanity unit replaced, waste pipe confirmed dry, m"
+    },
+    "areas": {
+      "name": "Guest Rooms",
+      "icon": "\ud83d\udecf"
+    },
+    "rooms": {
+      "name": "Room 205"
+    },
+    "note": "Follow-up inspection Room 205: vanity unit replaced, waste pipe confirmed dry, mould remediation successful. Surface treated with anti-mould paint (Dulux Bathroom+). No recurrence. Area signed off green.",
+    "photo_urls": [
+      "https://picsum.photos/seed/room-205-fixed/600/400"
+    ]
+  },
+  {
+    "id": "dev10",
+    "prop_id": "dp1",
+    "area_id": "da1_2",
+    "room_id": null,
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2025-11-16T09:00:00Z",
+    "month_label": "Nov '25",
+    "tasks": {
+      "name": "Generator load test",
+      "type": "misc",
+      "ref": "GEN",
+      "description": "Monthly test run completed. All normal. Fuel at 70% \u2014 scheduled top-up with next"
+    },
+    "areas": {
+      "name": "Roof & Plant",
+      "icon": "\ud83d\udecf"
+    },
+    "rooms": null,
+    "note": "Monthly test run completed. All normal. Fuel at 70% \u2014 scheduled top-up with next delivery.",
+    "photo_urls": [
+      "https://picsum.photos/seed/generator-ok/600/400"
+    ]
+  },
+  {
+    "id": "dev11",
+    "prop_id": "dp1",
+    "area_id": "da1_3",
+    "room_id": null,
+    "rag": "amber",
+    "quote_status": "none",
+    "completed_at": "2025-11-16T09:00:00Z",
+    "month_label": "Nov '25",
+    "tasks": {
+      "name": "Pool water chemistry",
+      "type": "pool",
+      "ref": "P-01",
+      "description": "Free chlorine 0.8 mg/L \u2014 below 1.0 mg/L minimum. Shock dose of sodium hypochlori"
+    },
+    "areas": {
+      "name": "Pool Terrace",
+      "icon": "\ud83d\udecf"
+    },
+    "rooms": null,
+    "note": "Free chlorine 0.8 mg/L \u2014 below 1.0 mg/L minimum. Shock dose of sodium hypochlorite added (2L). pH adjusted from 7.8 to 7.3 with HCl. Re-check in 24h recommended. Likely cause: heavy bather load over weekend.",
+    "photo_urls": [
+      "https://picsum.photos/seed/pool-chem/600/400"
+    ]
+  },
+  {
+    "id": "dev12",
+    "prop_id": "dp1",
+    "area_id": "da1_5",
+    "room_id": null,
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2025-11-16T09:00:00Z",
+    "month_label": "Nov '25",
+    "tasks": {
+      "name": "Fire exit check",
+      "type": "fire",
+      "ref": "H-02",
+      "description": "All fire exit signs illuminated and legible. Exit routes clear of obstruction. E"
+    },
+    "areas": {
+      "name": "Reception",
+      "icon": "\ud83d\udecf"
+    },
+    "rooms": null,
+    "note": "All fire exit signs illuminated and legible. Exit routes clear of obstruction. Emergency lighting tested \u2014 all 8 units operational. Battery backup confirmed >3hr.",
+    "photo_urls": [
+      "https://picsum.photos/seed/fire-exit/600/400"
+    ]
+  },
+  {
+    "id": "dev13",
+    "prop_id": "dp1",
+    "area_id": "da1_1",
+    "room_id": "Room 312",
+    "rag": "amber",
+    "quote_status": "none",
+    "completed_at": "2025-12-08T09:00:00Z",
+    "month_label": "Dec '25",
+    "tasks": {
+      "name": "AC filter clean",
+      "type": "hvac",
+      "ref": "AC-1",
+      "description": "AC unit Room 312 \u2014 filter heavily clogged with lint and dust. Unit running at re"
+    },
+    "areas": {
+      "name": "Guest Rooms",
+      "icon": "\ud83d\udecf"
+    },
+    "rooms": {
+      "name": "Room 312"
+    },
+    "note": "AC unit Room 312 \u2014 filter heavily clogged with lint and dust. Unit running at reduced capacity. Filter cleaned and biocide sprayed. Coil inspected \u2014 light dust accumulation cleaned. Drain tray clear. Performance restored. Note: filter interval should be reduced to monthly for this unit given occupancy pattern.",
+    "photo_urls": [
+      "https://picsum.photos/seed/ac-filter/600/400"
+    ]
+  },
+  {
+    "id": "dev14",
+    "prop_id": "dp1",
+    "area_id": "da1_2",
+    "room_id": null,
+    "rag": "red",
+    "quote_status": "requested",
+    "completed_at": "2025-12-08T09:00:00Z",
+    "month_label": "Dec '25",
+    "tasks": {
+      "name": "Electrical DB \u2014 urgent",
+      "type": "elec",
+      "ref": "E-DB",
+      "description": "MCB-12 (pool pump) failed to reset after trip. Scorch marks now visible on busba"
+    },
+    "areas": {
+      "name": "Roof & Plant",
+      "icon": "\ud83d\udecf"
+    },
+    "rooms": null,
+    "note": "MCB-12 (pool pump) failed to reset after trip. Scorch marks now visible on busbar. Circuit remains isolated. Pool pump offline. Emergency electrician required \u2014 cannot restore circuit safely. Quote raised for busbar repair and MCB replacement.",
+    "photo_urls": [
+      "https://picsum.photos/seed/db-burnt/600/400"
+    ]
+  },
+  {
+    "id": "dev15",
+    "prop_id": "dp1",
+    "area_id": "da1_3",
+    "room_id": null,
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2025-12-08T09:00:00Z",
+    "month_label": "Dec '25",
+    "tasks": {
+      "name": "Pool chemistry",
+      "type": "pool",
+      "ref": "P-01",
+      "description": "Pool offline \u2014 electrical fault on pump circuit (see Roof & Plant event). Water "
+    },
+    "areas": {
+      "name": "Pool Terrace",
+      "icon": "\ud83d\udecf"
+    },
+    "rooms": null,
+    "note": "Pool offline \u2014 electrical fault on pump circuit (see Roof & Plant event). Water tested: chemistry parameters still within range. Manual circulation with submersible pump to prevent stagnation.",
+    "photo_urls": [
+      "https://picsum.photos/seed/pool-manual/600/400"
+    ]
+  },
+  {
+    "id": "dev16",
+    "prop_id": "dp1",
+    "area_id": "da1_2",
+    "room_id": null,
+    "rag": "green",
+    "quote_status": "approved",
+    "completed_at": "2026-01-12T09:00:00Z",
+    "month_label": "Jan '26",
+    "tasks": {
+      "name": "DB repair completed",
+      "type": "elec",
+      "ref": "E-DB",
+      "description": "Busbar section replaced, MCB-12 upgraded to 32A Type C. Pool pump circuit restor"
+    },
+    "areas": {
+      "name": "Roof & Plant",
+      "icon": "\ud83d\udecf"
+    },
+    "rooms": null,
+    "note": "Busbar section replaced, MCB-12 upgraded to 32A Type C. Pool pump circuit restored and tested under load. RCD verified. IR re-scan: all MCBs now within 2\u00b0C of ambient. Full report issued. System signed off.",
+    "photo_urls": [
+      "https://picsum.photos/seed/db-fixed/600/400"
+    ]
+  },
+  {
+    "id": "dev17",
+    "prop_id": "dp1",
+    "area_id": "da1_1",
+    "room_id": "Room 108",
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2026-01-12T09:00:00Z",
+    "month_label": "Jan '26",
+    "tasks": {
+      "name": "Water temps \u2014 all rooms",
+      "type": "hydro",
+      "ref": "W-01",
+      "description": "Monthly water temp audit \u2014 8 rooms checked this visit (Oct cycle). All hot water"
+    },
+    "areas": {
+      "name": "Guest Rooms",
+      "icon": "\ud83d\udecf"
+    },
+    "rooms": {
+      "name": "Room 108"
+    },
+    "note": "Monthly water temp audit \u2014 8 rooms checked this visit (Oct cycle). All hot water \u226551\u00b0C, cold water \u226418\u00b0C. Shower heads all clean and flowing well. No issues.",
+    "photo_urls": [
+      "https://picsum.photos/seed/water-temp/600/400"
+    ]
+  },
+  {
+    "id": "dev18",
+    "prop_id": "dp1",
+    "area_id": "da1_3",
+    "room_id": null,
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2026-01-12T09:00:00Z",
+    "month_label": "Jan '26",
+    "tasks": {
+      "name": "Pool chemistry",
+      "type": "pool",
+      "ref": "P-01",
+      "description": "Pool back online. Chlorine 1.3 mg/L \u2713, pH 7.2 \u2713, TDS 990 \u2713. All good. Pump runni"
+    },
+    "areas": {
+      "name": "Pool Terrace",
+      "icon": "\ud83d\udecf"
+    },
+    "rooms": null,
+    "note": "Pool back online. Chlorine 1.3 mg/L \u2713, pH 7.2 \u2713, TDS 990 \u2713. All good. Pump running quietly.",
+    "photo_urls": [
+      "https://picsum.photos/seed/pool-restored/600/400"
+    ]
+  },
+  {
+    "id": "dev19",
+    "prop_id": "dp1",
+    "area_id": "da1_4",
+    "room_id": null,
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2026-01-12T09:00:00Z",
+    "month_label": "Jan '26",
+    "tasks": {
+      "name": "Kitchen checks",
+      "type": "misc",
+      "ref": "K-01",
+      "description": "All fridges logged. Dishwasher filter cleaned. Grease trap inspected \u2014 30% capac"
+    },
+    "areas": {
+      "name": "Breakfast Area",
+      "icon": "\ud83d\udecf"
+    },
+    "rooms": null,
+    "note": "All fridges logged. Dishwasher filter cleaned. Grease trap inspected \u2014 30% capacity, next clean due Feb. Drain enzyme treatment applied to all kitchen drains.",
+    "photo_urls": [
+      "https://picsum.photos/seed/kitchen-ok/600/400"
+    ]
+  },
+  {
+    "id": "dev20",
+    "prop_id": "dp1",
+    "area_id": "da1_1",
+    "room_id": "Room 220",
+    "rag": "amber",
+    "quote_status": "none",
+    "completed_at": "2026-02-16T09:00:00Z",
+    "month_label": "Feb '26",
+    "tasks": {
+      "name": "Sealant condition",
+      "type": "hydro",
+      "ref": "B-02",
+      "description": "Silicone sealant around bath in Room 220 showing early mould growth and partial "
+    },
+    "areas": {
+      "name": "Guest Rooms",
+      "icon": "\ud83d\udecf"
+    },
+    "rooms": {
+      "name": "Room 220"
+    },
+    "note": "Silicone sealant around bath in Room 220 showing early mould growth and partial delamination at taps end. Sealant removed, surface cleaned with fungicide, and re-sealed with Soudal Silirub 2 Sanitary (white). Curing time 24hr \u2014 room unavailable tonight.",
+    "photo_urls": [
+      "https://picsum.photos/seed/sealant-bath/600/400"
+    ]
+  },
+  {
+    "id": "dev21",
+    "prop_id": "dp1",
+    "area_id": "da1_2",
+    "room_id": null,
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2026-02-16T09:00:00Z",
+    "month_label": "Feb '26",
+    "tasks": {
+      "name": "Generator test",
+      "type": "misc",
+      "ref": "GEN",
+      "description": "Test run completed. Fuel 65%. Battery voltage 13.1V \u2014 good. Transfer switch test"
+    },
+    "areas": {
+      "name": "Roof & Plant",
+      "icon": "\ud83d\udecf"
+    },
+    "rooms": null,
+    "note": "Test run completed. Fuel 65%. Battery voltage 13.1V \u2014 good. Transfer switch tested \u2014 auto changeover in 8 seconds. Logbook updated.",
+    "photo_urls": [
+      "https://picsum.photos/seed/generator-run/600/400"
+    ]
+  },
+  {
+    "id": "dev22",
+    "prop_id": "dp1",
+    "area_id": "da1_3",
+    "room_id": null,
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2026-02-16T09:00:00Z",
+    "month_label": "Feb '26",
+    "tasks": {
+      "name": "Pool chemistry",
+      "type": "pool",
+      "ref": "P-01",
+      "description": "All parameters nominal. Chlorine 1.1 mg/L \u2713, pH 7.4 \u2713. Algae inhibitor dosed. Po"
+    },
+    "areas": {
+      "name": "Pool Terrace",
+      "icon": "\ud83d\udecf"
+    },
+    "rooms": null,
+    "note": "All parameters nominal. Chlorine 1.1 mg/L \u2713, pH 7.4 \u2713. Algae inhibitor dosed. Pool cover clean.",
+    "photo_urls": [
+      "https://picsum.photos/seed/pool-good/600/400"
+    ]
+  },
+  {
+    "id": "dev23",
+    "prop_id": "dp1",
+    "area_id": "da1_5",
+    "room_id": null,
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2026-02-16T09:00:00Z",
+    "month_label": "Feb '26",
+    "tasks": {
+      "name": "Fire extinguisher check",
+      "type": "fire",
+      "ref": "H-03",
+      "description": "All 7 CO2 and 4 dry powder extinguishers inspected. Pressure gauges all in green"
+    },
+    "areas": {
+      "name": "Reception",
+      "icon": "\ud83d\udecf"
+    },
+    "rooms": null,
+    "note": "All 7 CO2 and 4 dry powder extinguishers inspected. Pressure gauges all in green zone. Pins and seals intact. Wall brackets secure. Logbook updated. Next service due Jun '27.",
+    "photo_urls": [
+      "https://picsum.photos/seed/extinguisher/600/400"
+    ]
+  },
+  {
+    "id": "dev24",
+    "prop_id": "dp1",
+    "area_id": "da1_1",
+    "room_id": "Room 415",
+    "rag": "red",
+    "quote_status": "requested",
+    "completed_at": "2026-03-08T09:00:00Z",
+    "month_label": "Mar '26",
+    "tasks": {
+      "name": "Hot water \u2014 Room 415",
+      "type": "hydro",
+      "ref": "W-01",
+      "description": "Hot water in Room 415 measured at 38.4\u00b0C \u2014 significantly below 50\u00b0C minimum. Gue"
+    },
+    "areas": {
+      "name": "Guest Rooms",
+      "icon": "\ud83d\udecf"
+    },
+    "rooms": {
+      "name": "Room 415"
+    },
+    "note": "Hot water in Room 415 measured at 38.4\u00b0C \u2014 significantly below 50\u00b0C minimum. Guest had complained of tepid shower. Thermostatic mixing valve (TMV) investigated \u2014 diaphragm failed, valve stuck partially open mixing cold water. TMV isolated, room closed. Emergency replacement TMV ordered. Legionella risk assessment updated.",
+    "photo_urls": [
+      "https://picsum.photos/seed/tmv-fail/600/400"
+    ]
+  },
+  {
+    "id": "dev25",
+    "prop_id": "dp1",
+    "area_id": "da1_2",
+    "room_id": null,
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2026-03-08T09:00:00Z",
+    "month_label": "Mar '26",
+    "tasks": {
+      "name": "Generator test",
+      "type": "misc",
+      "ref": "GEN",
+      "description": "Monthly test normal. Fuel topped up to 95%. All parameters green."
+    },
+    "areas": {
+      "name": "Roof & Plant",
+      "icon": "\ud83d\udecf"
+    },
+    "rooms": null,
+    "note": "Monthly test normal. Fuel topped up to 95%. All parameters green.",
+    "photo_urls": [
+      "https://picsum.photos/seed/gen-fuel/600/400"
+    ]
+  },
+  {
+    "id": "dev26",
+    "prop_id": "dp1",
+    "area_id": "da1_3",
+    "room_id": null,
+    "rag": "amber",
+    "quote_status": "none",
+    "completed_at": "2026-03-08T09:00:00Z",
+    "month_label": "Mar '26",
+    "tasks": {
+      "name": "Pool chemistry",
+      "type": "pool",
+      "ref": "P-01",
+      "description": "Chlorine dropped to 0.9 mg/L \u2014 just below threshold. pH slightly elevated at 7.7"
+    },
+    "areas": {
+      "name": "Pool Terrace",
+      "icon": "\ud83d\udecf"
+    },
+    "rooms": null,
+    "note": "Chlorine dropped to 0.9 mg/L \u2014 just below threshold. pH slightly elevated at 7.7. Chlorine dose adjusted and pH corrected. Suspected cause: higher bather load. Increased monitoring frequency this week.",
+    "photo_urls": [
+      "https://picsum.photos/seed/pool-low-cl/600/400"
+    ]
+  },
+  {
+    "id": "dev27",
+    "prop_id": "dp1",
+    "area_id": "da1_1",
+    "room_id": "Room 415",
+    "rag": "green",
+    "quote_status": "approved",
+    "completed_at": "2026-04-12T09:00:00Z",
+    "month_label": "Apr '26",
+    "tasks": {
+      "name": "Room 415 \u2014 TMV replaced",
+      "type": "hydro",
+      "ref": "W-01",
+      "description": "New Honeywell TMV3 installed Room 415 bathroom. Calibrated to 42\u00b0C outlet (L.N. "
+    },
+    "areas": {
+      "name": "Guest Rooms",
+      "icon": "\ud83d\udecf"
+    },
+    "rooms": {
+      "name": "Room 415"
+    },
+    "note": "New Honeywell TMV3 installed Room 415 bathroom. Calibrated to 42\u00b0C outlet (L.N. 5/2006 compliant). Hot water tested at point of use: 51.8\u00b0C before TMV, 42.2\u00b0C at outlet \u2713. Room re-opened. Legionella log updated.",
+    "photo_urls": [
+      "https://picsum.photos/seed/tmv-new/600/400"
+    ]
+  },
+  {
+    "id": "dev28",
+    "prop_id": "dp1",
+    "area_id": "da1_2",
+    "room_id": null,
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2026-04-12T09:00:00Z",
+    "month_label": "Apr '26",
+    "tasks": {
+      "name": "Bi-annual DB inspection",
+      "type": "elec",
+      "ref": "E-DB",
+      "description": "Full bi-annual DB inspection and IR scan. All circuits normal \u2014 no hot spots. RC"
+    },
+    "areas": {
+      "name": "Roof & Plant",
+      "icon": "\ud83d\udecf"
+    },
+    "rooms": null,
+    "note": "Full bi-annual DB inspection and IR scan. All circuits normal \u2014 no hot spots. RCDs tested (x4) all tripped correctly <30mA. Labelling updated for new pool pump circuit. Written report issued.",
+    "photo_urls": [
+      "https://picsum.photos/seed/db-scan/600/400"
+    ]
+  },
+  {
+    "id": "dev29",
+    "prop_id": "dp1",
+    "area_id": "da1_3",
+    "room_id": null,
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2026-04-12T09:00:00Z",
+    "month_label": "Apr '26",
+    "tasks": {
+      "name": "Pool chemistry",
+      "type": "pool",
+      "ref": "P-01",
+      "description": "Excellent results: Cl 1.4 mg/L \u2713, pH 7.3 \u2713, TDS 1,050 \u2713. Pool in peak condition "
+    },
+    "areas": {
+      "name": "Pool Terrace",
+      "icon": "\ud83d\udecf"
+    },
+    "rooms": null,
+    "note": "Excellent results: Cl 1.4 mg/L \u2713, pH 7.3 \u2713, TDS 1,050 \u2713. Pool in peak condition for summer season. Lights inspected \u2014 all working.",
+    "photo_urls": [
+      "https://picsum.photos/seed/pool-summer/600/400"
+    ]
+  },
+  {
+    "id": "dev30",
+    "prop_id": "dp1",
+    "area_id": "da1_4",
+    "room_id": null,
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2026-04-12T09:00:00Z",
+    "month_label": "Apr '26",
+    "tasks": {
+      "name": "Kitchen ventilation",
+      "type": "hvac",
+      "ref": "K-04",
+      "description": "Canopy filter deep cleaned (removed and soaked in degreaser). Airflow restored t"
+    },
+    "areas": {
+      "name": "Breakfast Area",
+      "icon": "\ud83d\udecf"
+    },
+    "rooms": null,
+    "note": "Canopy filter deep cleaned (removed and soaked in degreaser). Airflow restored to design spec. Duct inspection \u2014 clear. All extraction fans running smoothly.",
+    "photo_urls": [
+      "https://picsum.photos/seed/kitchen-vent/600/400"
+    ]
+  },
+  {
+    "id": "dev31",
+    "prop_id": "dp1",
+    "area_id": "da1_1",
+    "room_id": "Room 108",
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2026-05-16T09:00:00Z",
+    "month_label": "May '26",
+    "tasks": {
+      "name": "AC filter clean",
+      "type": "hvac",
+      "ref": "AC-1",
+      "description": "5 rooms AC filters cleaned this visit. All units operating within normal paramet"
+    },
+    "areas": {
+      "name": "Guest Rooms",
+      "icon": "\ud83d\udecf"
+    },
+    "rooms": {
+      "name": "Room 108"
+    },
+    "note": "5 rooms AC filters cleaned this visit. All units operating within normal parameters. Drain trays clear. No refrigerant odours detected.",
+    "photo_urls": [
+      "https://picsum.photos/seed/ac-rooms/600/400"
+    ]
+  },
+  {
+    "id": "dev32",
+    "prop_id": "dp1",
+    "area_id": "da1_2",
+    "room_id": null,
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2026-05-16T09:00:00Z",
+    "month_label": "May '26",
+    "tasks": {
+      "name": "Generator test",
+      "type": "misc",
+      "ref": "GEN",
+      "description": "Monthly test completed without issues. Fuel 80%. Oil checked \u2014 clean."
+    },
+    "areas": {
+      "name": "Roof & Plant",
+      "icon": "\ud83d\udecf"
+    },
+    "rooms": null,
+    "note": "Monthly test completed without issues. Fuel 80%. Oil checked \u2014 clean.",
+    "photo_urls": [
+      "https://picsum.photos/seed/gen-may/600/400"
+    ]
+  },
+  {
+    "id": "dev33",
+    "prop_id": "dp1",
+    "area_id": "da1_3",
+    "room_id": null,
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2026-05-16T09:00:00Z",
+    "month_label": "May '26",
+    "tasks": {
+      "name": "Pool chemistry",
+      "type": "pool",
+      "ref": "P-01",
+      "description": "Summer peak \u2014 pool busy daily. Chlorine 1.6 mg/L \u2713, pH 7.2 \u2713, TDS 1,100 \u2713. Cyanu"
+    },
+    "areas": {
+      "name": "Pool Terrace",
+      "icon": "\ud83d\udecf"
+    },
+    "rooms": null,
+    "note": "Summer peak \u2014 pool busy daily. Chlorine 1.6 mg/L \u2713, pH 7.2 \u2713, TDS 1,100 \u2713. Cyanuric acid added for UV stabilisation. Water crystal clear.",
+    "photo_urls": [
+      "https://picsum.photos/seed/pool-peak/600/400"
+    ]
+  },
+  {
+    "id": "dev34",
+    "prop_id": "dp1",
+    "area_id": "da1_5",
+    "room_id": null,
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2026-05-16T09:00:00Z",
+    "month_label": "May '26",
+    "tasks": {
+      "name": "Fire alarm test",
+      "type": "fire",
+      "ref": "FA-1",
+      "description": "Bi-annual fire alarm test: all 24 call points tested, all 18 detectors activated"
+    },
+    "areas": {
+      "name": "Reception",
+      "icon": "\ud83d\udecf"
+    },
+    "rooms": null,
+    "note": "Bi-annual fire alarm test: all 24 call points tested, all 18 detectors activated correctly. Sounders audible throughout building. Fire drill held \u2014 22 staff and guests evacuated in 4 min 10 sec. Certificate issued.",
+    "photo_urls": [
+      "https://picsum.photos/seed/fire-drill/600/400"
+    ]
+  },
+  {
+    "id": "dev35",
+    "prop_id": "dp1",
+    "area_id": "da1_1",
+    "room_id": "Room 310",
+    "rag": "amber",
+    "quote_status": "none",
+    "completed_at": "2026-06-08T09:00:00Z",
+    "month_label": "Jun '26",
+    "tasks": {
+      "name": "Floor condition",
+      "type": "hydro",
+      "ref": "B-03",
+      "description": "Loose ceramic tile in Room 310 bathroom \u2014 grout cracked around 4 tiles, one tile"
+    },
+    "areas": {
+      "name": "Guest Rooms",
+      "icon": "\ud83d\udecf"
+    },
+    "rooms": {
+      "name": "Room 310"
+    },
+    "note": "Loose ceramic tile in Room 310 bathroom \u2014 grout cracked around 4 tiles, one tile lifting. Trip hazard. Tiles re-bedded with flexible tile adhesive and re-grouted. Curing 24hr \u2014 room blocked tonight. Recommend full bathroom tile survey on next quarterly visit.",
+    "photo_urls": [
+      "https://picsum.photos/seed/tile-repair/600/400"
+    ]
+  },
+  {
+    "id": "dev36",
+    "prop_id": "dp1",
+    "area_id": "da1_2",
+    "room_id": null,
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2026-06-08T09:00:00Z",
+    "month_label": "Jun '26",
+    "tasks": {
+      "name": "Legionella sampling",
+      "type": "misc",
+      "ref": "LEG",
+      "description": "Bi-annual Legionella microbiological sampling completed. 6 samples taken \u2014 hot c"
+    },
+    "areas": {
+      "name": "Roof & Plant",
+      "icon": "\ud83d\udecf"
+    },
+    "rooms": null,
+    "note": "Bi-annual Legionella microbiological sampling completed. 6 samples taken \u2014 hot calorifier, cold tank, two sentinel outlets, shower head, and TMV outlet. Samples dispatched to Malta Aqua Labs (ISO 17025). Results due within 10 working days.",
+    "photo_urls": [
+      "https://picsum.photos/seed/water-sample/600/400"
+    ]
+  },
+  {
+    "id": "dev37",
+    "prop_id": "dp1",
+    "area_id": "da1_3",
+    "room_id": null,
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2026-06-08T09:00:00Z",
+    "month_label": "Jun '26",
+    "tasks": {
+      "name": "Pool chemistry",
+      "type": "pool",
+      "ref": "P-01",
+      "description": "All parameters excellent. Chlorine 1.5 mg/L \u2713, pH 7.3 \u2713. Pool heavily used \u2014 fil"
+    },
+    "areas": {
+      "name": "Pool Terrace",
+      "icon": "\ud83d\udecf"
+    },
+    "rooms": null,
+    "note": "All parameters excellent. Chlorine 1.5 mg/L \u2713, pH 7.3 \u2713. Pool heavily used \u2014 filter backwash performed. Pump pre-filter cleaned.",
+    "photo_urls": [
+      "https://picsum.photos/seed/pool-june/600/400"
+    ]
+  },
+  {
+    "id": "dev38",
+    "prop_id": "dp1",
+    "area_id": "da1_1",
+    "room_id": "Room 201",
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2026-07-12T09:00:00Z",
+    "month_label": "Jul '26",
+    "tasks": {
+      "name": "Monthly water checks",
+      "type": "hydro",
+      "ref": "W-01",
+      "description": "Water temp audit \u2014 6 rooms checked (Jul cycle). All hot water \u226552\u00b0C, cold \u226417\u00b0C."
+    },
+    "areas": {
+      "name": "Guest Rooms",
+      "icon": "\ud83d\udecf"
+    },
+    "rooms": {
+      "name": "Room 201"
+    },
+    "note": "Water temp audit \u2014 6 rooms checked (Jul cycle). All hot water \u226552\u00b0C, cold \u226417\u00b0C. Legionella log updated. Legionella lab results received last week: all samples <1 CFU/L \u2713 \u2014 no action required.",
+    "photo_urls": [
+      "https://picsum.photos/seed/water-good/600/400"
+    ]
+  },
+  {
+    "id": "dev39",
+    "prop_id": "dp1",
+    "area_id": "da1_2",
+    "room_id": null,
+    "rag": "red",
+    "quote_status": "requested",
+    "completed_at": "2026-07-12T09:00:00Z",
+    "month_label": "Jul '26",
+    "tasks": {
+      "name": "Heat pump fault",
+      "type": "hvac",
+      "ref": "HPUMP",
+      "description": "Heat pump unit alarming \u2014 high pressure fault code. Refrigerant pressure at high"
+    },
+    "areas": {
+      "name": "Roof & Plant",
+      "icon": "\ud83d\udecf"
+    },
+    "rooms": null,
+    "note": "Heat pump unit alarming \u2014 high pressure fault code. Refrigerant pressure at high side 42 bar (normal 28 bar). Condenser coil found blocked with cottonwood seed. Coil cleaned with compressed air and fin comb. Pressure normalised to 29 bar. Unit restarted and monitored for 30 min \u2014 stable. Peak summer heat load may require additional monitoring.",
+    "photo_urls": [
+      "https://picsum.photos/seed/heatpump-fault/600/400"
+    ]
+  },
+  {
+    "id": "dev40",
+    "prop_id": "dp1",
+    "area_id": "da1_3",
+    "room_id": null,
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2026-07-12T09:00:00Z",
+    "month_label": "Jul '26",
+    "tasks": {
+      "name": "Pool chemistry",
+      "type": "pool",
+      "ref": "P-01",
+      "description": "Peak July: pool seeing 40+ bathers/day. Chlorine 1.8 mg/L \u2713 (elevated due to hea"
+    },
+    "areas": {
+      "name": "Pool Terrace",
+      "icon": "\ud83d\udecf"
+    },
+    "rooms": null,
+    "note": "Peak July: pool seeing 40+ bathers/day. Chlorine 1.8 mg/L \u2713 (elevated due to heat/load), pH 7.2 \u2713, TDS 1,250 mg/L \u2014 approaching limit, partial water change recommended next month. Water change deferred pending guest occupancy.",
+    "photo_urls": [
+      "https://picsum.photos/seed/pool-july/600/400"
+    ]
+  },
+  {
+    "id": "dev41",
+    "prop_id": "dp1",
+    "area_id": "da1_2",
+    "room_id": null,
+    "rag": "green",
+    "quote_status": "approved",
+    "completed_at": "2026-08-16T09:00:00Z",
+    "month_label": "Aug '26",
+    "tasks": {
+      "name": "Heat pump \u2014 service complete",
+      "type": "hvac",
+      "ref": "HPUMP",
+      "description": "Full heat pump service completed. Refrigerant circuit checked (correct charge), "
+    },
+    "areas": {
+      "name": "Roof & Plant",
+      "icon": "\ud83d\udecf"
+    },
+    "rooms": null,
+    "note": "Full heat pump service completed. Refrigerant circuit checked (correct charge), condenser and evaporator coils cleaned, expansion valve serviced, all electrical connections tightened. Performance test: COP 3.8 (design 3.5+). Unit operating optimally for remaining summer season. Quote approved and work signed off.",
+    "photo_urls": [
+      "https://picsum.photos/seed/heatpump-ok/600/400"
+    ]
+  },
+  {
+    "id": "dev42",
+    "prop_id": "dp1",
+    "area_id": "da1_1",
+    "room_id": "Room 105",
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2026-08-16T09:00:00Z",
+    "month_label": "Aug '26",
+    "tasks": {
+      "name": "AC service \u2014 all rooms",
+      "type": "hvac",
+      "ref": "AC-1",
+      "description": "Final monthly AC filter clean before end-of-season. All 22 room units serviced. "
+    },
+    "areas": {
+      "name": "Guest Rooms",
+      "icon": "\ud83d\udecf"
+    },
+    "rooms": {
+      "name": "Room 105"
+    },
+    "note": "Final monthly AC filter clean before end-of-season. All 22 room units serviced. 3 drain trays had minor algae growth \u2014 treated with biocide tablet. All units operating within spec.",
+    "photo_urls": [
+      "https://picsum.photos/seed/ac-season/600/400"
+    ]
+  },
+  {
+    "id": "dev43",
+    "prop_id": "dp1",
+    "area_id": "da1_3",
+    "room_id": null,
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2026-08-16T09:00:00Z",
+    "month_label": "Aug '26",
+    "tasks": {
+      "name": "Pool chemistry",
+      "type": "pool",
+      "ref": "P-01",
+      "description": "End of high season. Cl 1.3 mg/L \u2713, pH 7.4 \u2713, TDS 1,480 mg/L \u2014 partial water chan"
+    },
+    "areas": {
+      "name": "Pool Terrace",
+      "icon": "\ud83d\udecf"
+    },
+    "rooms": null,
+    "note": "End of high season. Cl 1.3 mg/L \u2713, pH 7.4 \u2713, TDS 1,480 mg/L \u2014 partial water change performed (15%), TDS now 1,100. Pool still busy \u2014 monitoring closely.",
+    "photo_urls": [
+      "https://picsum.photos/seed/pool-aug/600/400"
+    ]
+  },
+  {
+    "id": "dev44",
+    "prop_id": "dp2",
+    "area_id": "da2_1",
+    "room_id": "Room 3",
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2025-09-09T09:00:00Z",
+    "month_label": "Sep '25",
+    "tasks": {
+      "name": "Water temp audit",
+      "type": "hydro",
+      "ref": "W-01",
+      "description": "All 6 rooms checked this visit. Hot water \u226552\u00b0C throughout, cold \u226416\u00b0C. System p"
+    },
+    "areas": {
+      "name": "Guest Rooms",
+      "icon": "\ud83d\udecf"
+    },
+    "rooms": {
+      "name": "Room 3"
+    },
+    "note": "All 6 rooms checked this visit. Hot water \u226552\u00b0C throughout, cold \u226416\u00b0C. System performing well \u2014 recently installed heat exchanger maintaining temperature excellently.",
+    "photo_urls": [
+      "https://picsum.photos/seed/water-villa/600/400"
+    ]
+  },
+  {
+    "id": "dev45",
+    "prop_id": "dp2",
+    "area_id": "da2_3",
+    "room_id": null,
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2025-09-09T09:00:00Z",
+    "month_label": "Sep '25",
+    "tasks": {
+      "name": "Pool chemistry",
+      "type": "pool",
+      "ref": "P-01",
+      "description": "Chlorine 1.3 mg/L \u2713, pH 7.3 \u2713, TDS 920 \u2713. Garden area immaculate. Irrigation sys"
+    },
+    "areas": {
+      "name": "Plant/Pool/Kitchen",
+      "icon": "\u2699"
+    },
+    "rooms": null,
+    "note": "Chlorine 1.3 mg/L \u2713, pH 7.3 \u2713, TDS 920 \u2713. Garden area immaculate. Irrigation system running correctly.",
+    "photo_urls": [
+      "https://picsum.photos/seed/pool-garden/600/400"
+    ]
+  },
+  {
+    "id": "dev46",
+    "prop_id": "dp2",
+    "area_id": "da2_1",
+    "room_id": "Room 7",
+    "rag": "amber",
+    "quote_status": "none",
+    "completed_at": "2025-10-14T09:00:00Z",
+    "month_label": "Oct '25",
+    "tasks": {
+      "name": "AC drain blockage",
+      "type": "hvac",
+      "ref": "AC-2",
+      "description": "Room 7 AC drain backing up \u2014 condensate overflow onto ceiling void below. Drain "
+    },
+    "areas": {
+      "name": "Guest Rooms",
+      "icon": "\ud83d\udecf"
+    },
+    "rooms": {
+      "name": "Room 7"
+    },
+    "note": "Room 7 AC drain backing up \u2014 condensate overflow onto ceiling void below. Drain cleared with nitrogen purge (heavy algae growth). Biocide tablet placed in drain tray. Monitor next visit. Secondary drain path clear.",
+    "photo_urls": [
+      "https://picsum.photos/seed/ac-drain-villa/600/400"
+    ]
+  },
+  {
+    "id": "dev47",
+    "prop_id": "dp2",
+    "area_id": "da2_2",
+    "room_id": null,
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2025-10-14T09:00:00Z",
+    "month_label": "Oct '25",
+    "tasks": {
+      "name": "Generator test",
+      "type": "misc",
+      "ref": "GEN",
+      "description": "Test run 10 min. All normal. Fuel 90%."
+    },
+    "areas": {
+      "name": "Plant/Pool/Kitchen",
+      "icon": "\u2699"
+    },
+    "rooms": null,
+    "note": "Test run 10 min. All normal. Fuel 90%.",
+    "photo_urls": [
+      "https://picsum.photos/seed/gen-villa/600/400"
+    ]
+  },
+  {
+    "id": "dev48",
+    "prop_id": "dp2",
+    "area_id": "da2_1",
+    "room_id": "Room 7",
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2025-11-09T09:00:00Z",
+    "month_label": "Nov '25",
+    "tasks": {
+      "name": "AC drain follow-up",
+      "type": "hvac",
+      "ref": "AC-2",
+      "description": "Room 7 AC drain clear \u2014 no recurrence. Biocide tablet still active. All other ro"
+    },
+    "areas": {
+      "name": "Guest Rooms",
+      "icon": "\ud83d\udecf"
+    },
+    "rooms": {
+      "name": "Room 7"
+    },
+    "note": "Room 7 AC drain clear \u2014 no recurrence. Biocide tablet still active. All other rooms checked \u2014 drains all clear.",
+    "photo_urls": [
+      "https://picsum.photos/seed/ac-ok-villa/600/400"
+    ]
+  },
+  {
+    "id": "dev49",
+    "prop_id": "dp2",
+    "area_id": "da2_3",
+    "room_id": null,
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2025-11-09T09:00:00Z",
+    "month_label": "Nov '25",
+    "tasks": {
+      "name": "Pool chemistry",
+      "type": "pool",
+      "ref": "P-01",
+      "description": "All parameters nominal. Pool cover condition good."
+    },
+    "areas": {
+      "name": "Plant/Pool/Kitchen",
+      "icon": "\u2699"
+    },
+    "rooms": null,
+    "note": "All parameters nominal. Pool cover condition good.",
+    "photo_urls": [
+      "https://picsum.photos/seed/pool-nov/600/400"
+    ]
+  },
+  {
+    "id": "dev50",
+    "prop_id": "dp2",
+    "area_id": "da2_4",
+    "room_id": null,
+    "rag": "amber",
+    "quote_status": "requested",
+    "completed_at": "2025-12-14T09:00:00Z",
+    "month_label": "Dec '25",
+    "tasks": {
+      "name": "Kitchen extract fan",
+      "type": "hvac",
+      "ref": "K-04",
+      "description": "Kitchen extract fan bearing starting to develop noise. Fan still operational but"
+    },
+    "areas": {
+      "name": "Plant/Pool/Kitchen",
+      "icon": "\u2699"
+    },
+    "rooms": null,
+    "note": "Kitchen extract fan bearing starting to develop noise. Fan still operational but early signs of wear. Quote raised for replacement bearing/fan motor before it fails in service.",
+    "photo_urls": [
+      "https://picsum.photos/seed/fan-villa/600/400"
+    ]
+  },
+  {
+    "id": "dev51",
+    "prop_id": "dp2",
+    "area_id": "da2_1",
+    "room_id": "Room 12",
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2025-12-14T09:00:00Z",
+    "month_label": "Dec '25",
+    "tasks": {
+      "name": "Mould inspection",
+      "type": "hydro",
+      "ref": "B-01",
+      "description": "All rooms inspected \u2014 no mould found. Excellent ventilation throughout building."
+    },
+    "areas": {
+      "name": "Guest Rooms",
+      "icon": "\ud83d\udecf"
+    },
+    "rooms": {
+      "name": "Room 12"
+    },
+    "note": "All rooms inspected \u2014 no mould found. Excellent ventilation throughout building. Sealants in good condition. Building fabric satisfactory.",
+    "photo_urls": [
+      "https://picsum.photos/seed/rooms-villa/600/400"
+    ]
+  },
+  {
+    "id": "dev52",
+    "prop_id": "dp2",
+    "area_id": "da2_4",
+    "room_id": null,
+    "rag": "green",
+    "quote_status": "approved",
+    "completed_at": "2026-01-09T09:00:00Z",
+    "month_label": "Jan '26",
+    "tasks": {
+      "name": "Kitchen fan \u2014 repaired",
+      "type": "hvac",
+      "ref": "K-04",
+      "description": "Fan motor replaced. New SKF bearing fitted. Fan running silently. Airflow measur"
+    },
+    "areas": {
+      "name": "Plant/Pool/Kitchen",
+      "icon": "\u2699"
+    },
+    "rooms": null,
+    "note": "Fan motor replaced. New SKF bearing fitted. Fan running silently. Airflow measured at 0.92 m/s \u2014 above design minimum. Kitchen staff confirmed improvement.",
+    "photo_urls": [
+      "https://picsum.photos/seed/fan-fixed-villa/600/400"
+    ]
+  },
+  {
+    "id": "dev53",
+    "prop_id": "dp2",
+    "area_id": "da2_3",
+    "room_id": null,
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2026-01-09T09:00:00Z",
+    "month_label": "Jan '26",
+    "tasks": {
+      "name": "Pool chemistry",
+      "type": "pool",
+      "ref": "P-01",
+      "description": "Chlorine 1.1 mg/L \u2713, pH 7.4 \u2713. Winter maintenance mode. Pool cover in use."
+    },
+    "areas": {
+      "name": "Plant/Pool/Kitchen",
+      "icon": "\u2699"
+    },
+    "rooms": null,
+    "note": "Chlorine 1.1 mg/L \u2713, pH 7.4 \u2713. Winter maintenance mode. Pool cover in use.",
+    "photo_urls": [
+      "https://picsum.photos/seed/pool-winter/600/400"
+    ]
+  },
+  {
+    "id": "dev54",
+    "prop_id": "dp2",
+    "area_id": "da2_1",
+    "room_id": "Room 9",
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2026-02-14T09:00:00Z",
+    "month_label": "Feb '26",
+    "tasks": {
+      "name": "Water temps",
+      "type": "hydro",
+      "ref": "W-01",
+      "description": "All rooms this month checked \u2014 all hot water \u226551\u00b0C, cold \u226419\u00b0C."
+    },
+    "areas": {
+      "name": "Guest Rooms",
+      "icon": "\ud83d\udecf"
+    },
+    "rooms": {
+      "name": "Room 9"
+    },
+    "note": "All rooms this month checked \u2014 all hot water \u226551\u00b0C, cold \u226419\u00b0C.",
+    "photo_urls": [
+      "https://picsum.photos/seed/water-villa2/600/400"
+    ]
+  },
+  {
+    "id": "dev55",
+    "prop_id": "dp2",
+    "area_id": "da2_2",
+    "room_id": null,
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2026-02-14T09:00:00Z",
+    "month_label": "Feb '26",
+    "tasks": {
+      "name": "DB inspection",
+      "type": "elec",
+      "ref": "E-DB",
+      "description": "Bi-annual DB check. All circuits normal. No hot spots on IR scan. RCDs tested \u2014 "
+    },
+    "areas": {
+      "name": "Plant/Pool/Kitchen",
+      "icon": "\u2699"
+    },
+    "rooms": null,
+    "note": "Bi-annual DB check. All circuits normal. No hot spots on IR scan. RCDs tested \u2014 all OK.",
+    "photo_urls": [
+      "https://picsum.photos/seed/db-villa/600/400"
+    ]
+  },
+  {
+    "id": "dev56",
+    "prop_id": "dp2",
+    "area_id": "da2_1",
+    "room_id": "Room 15",
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2026-03-09T09:00:00Z",
+    "month_label": "Mar '26",
+    "tasks": {
+      "name": "AC filters \u2014 all rooms",
+      "type": "hvac",
+      "ref": "AC-1",
+      "description": "18 rooms serviced. Filters cleaned, drain trays clear. All units ready for summe"
+    },
+    "areas": {
+      "name": "Guest Rooms",
+      "icon": "\ud83d\udecf"
+    },
+    "rooms": {
+      "name": "Room 15"
+    },
+    "note": "18 rooms serviced. Filters cleaned, drain trays clear. All units ready for summer season.",
+    "photo_urls": [
+      "https://picsum.photos/seed/ac-villa-all/600/400"
+    ]
+  },
+  {
+    "id": "dev57",
+    "prop_id": "dp2",
+    "area_id": "da2_3",
+    "room_id": null,
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2026-03-09T09:00:00Z",
+    "month_label": "Mar '26",
+    "tasks": {
+      "name": "Pool opening",
+      "type": "pool",
+      "ref": "P-01",
+      "description": "Pool brought back to full operation for spring season. Chlorine 1.4 mg/L \u2713, pH 7"
+    },
+    "areas": {
+      "name": "Plant/Pool/Kitchen",
+      "icon": "\u2699"
+    },
+    "rooms": null,
+    "note": "Pool brought back to full operation for spring season. Chlorine 1.4 mg/L \u2713, pH 7.2 \u2713. Filter sand replaced. All good.",
+    "photo_urls": [
+      "https://picsum.photos/seed/pool-spring/600/400"
+    ]
+  },
+  {
+    "id": "dev58",
+    "prop_id": "dp2",
+    "area_id": "da2_1",
+    "room_id": "Room 2",
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2026-04-14T09:00:00Z",
+    "month_label": "Apr '26",
+    "tasks": {
+      "name": "Monthly water checks",
+      "type": "hydro",
+      "ref": "W-01",
+      "description": "6 rooms checked \u2014 all within spec. Summer season underway."
+    },
+    "areas": {
+      "name": "Guest Rooms",
+      "icon": "\ud83d\udecf"
+    },
+    "rooms": {
+      "name": "Room 2"
+    },
+    "note": "6 rooms checked \u2014 all within spec. Summer season underway.",
+    "photo_urls": [
+      "https://picsum.photos/seed/water-sum-villa/600/400"
+    ]
+  },
+  {
+    "id": "dev59",
+    "prop_id": "dp2",
+    "area_id": "da2_3",
+    "room_id": null,
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2026-04-14T09:00:00Z",
+    "month_label": "Apr '26",
+    "tasks": {
+      "name": "Pool chemistry",
+      "type": "pool",
+      "ref": "P-01",
+      "description": "Cl 1.5 mg/L \u2713, pH 7.3 \u2713. Pool busy daily. All good."
+    },
+    "areas": {
+      "name": "Plant/Pool/Kitchen",
+      "icon": "\u2699"
+    },
+    "rooms": null,
+    "note": "Cl 1.5 mg/L \u2713, pH 7.3 \u2713. Pool busy daily. All good.",
+    "photo_urls": [
+      "https://picsum.photos/seed/pool-summer-villa/600/400"
+    ]
+  },
+  {
+    "id": "dev60",
+    "prop_id": "dp2",
+    "area_id": "da2_1",
+    "room_id": "Room 11",
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2026-05-09T09:00:00Z",
+    "month_label": "May '26",
+    "tasks": {
+      "name": "Sealant inspection",
+      "type": "hydro",
+      "ref": "B-02",
+      "description": "All room sealants checked \u2014 all in good condition. No delamination or mould. Goo"
+    },
+    "areas": {
+      "name": "Guest Rooms",
+      "icon": "\ud83d\udecf"
+    },
+    "rooms": {
+      "name": "Room 11"
+    },
+    "note": "All room sealants checked \u2014 all in good condition. No delamination or mould. Good quality silicone used at last re-seal holding well.",
+    "photo_urls": [
+      "https://picsum.photos/seed/sealant-villa/600/400"
+    ]
+  },
+  {
+    "id": "dev61",
+    "prop_id": "dp2",
+    "area_id": "da2_3",
+    "room_id": null,
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2026-05-09T09:00:00Z",
+    "month_label": "May '26",
+    "tasks": {
+      "name": "Pool chemistry",
+      "type": "pool",
+      "ref": "P-01",
+      "description": "Peak summer. Cl 1.7 mg/L \u2713, pH 7.2 \u2713, TDS 1,150 \u2713."
+    },
+    "areas": {
+      "name": "Plant/Pool/Kitchen",
+      "icon": "\u2699"
+    },
+    "rooms": null,
+    "note": "Peak summer. Cl 1.7 mg/L \u2713, pH 7.2 \u2713, TDS 1,150 \u2713.",
+    "photo_urls": [
+      "https://picsum.photos/seed/pool-peak-villa/600/400"
+    ]
+  },
+  {
+    "id": "dev62",
+    "prop_id": "dp2",
+    "area_id": "da2_1",
+    "room_id": "Room 6",
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2026-06-14T09:00:00Z",
+    "month_label": "Jun '26",
+    "tasks": {
+      "name": "AC mid-season service",
+      "type": "hvac",
+      "ref": "AC-1",
+      "description": "Mid-summer AC check on highest-use rooms. All filters cleaned. 2 drain trays tre"
+    },
+    "areas": {
+      "name": "Guest Rooms",
+      "icon": "\ud83d\udecf"
+    },
+    "rooms": {
+      "name": "Room 6"
+    },
+    "note": "Mid-summer AC check on highest-use rooms. All filters cleaned. 2 drain trays treated for algae. All units performing well.",
+    "photo_urls": [
+      "https://picsum.photos/seed/ac-summer-villa/600/400"
+    ]
+  },
+  {
+    "id": "dev63",
+    "prop_id": "dp2",
+    "area_id": "da2_3",
+    "room_id": null,
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2026-06-14T09:00:00Z",
+    "month_label": "Jun '26",
+    "tasks": {
+      "name": "Pool chemistry",
+      "type": "pool",
+      "ref": "P-01",
+      "description": "Cl 1.4 mg/L \u2713, pH 7.4 \u2713. Pool water clean and clear."
+    },
+    "areas": {
+      "name": "Plant/Pool/Kitchen",
+      "icon": "\u2699"
+    },
+    "rooms": null,
+    "note": "Cl 1.4 mg/L \u2713, pH 7.4 \u2713. Pool water clean and clear.",
+    "photo_urls": [
+      "https://picsum.photos/seed/pool-jun-villa/600/400"
+    ]
+  },
+  {
+    "id": "dev64",
+    "prop_id": "dp2",
+    "area_id": "da2_1",
+    "room_id": "Room 17",
+    "rag": "amber",
+    "quote_status": "none",
+    "completed_at": "2026-07-09T09:00:00Z",
+    "month_label": "Jul '26",
+    "tasks": {
+      "name": "Socket fault",
+      "type": "elec",
+      "ref": "E-01",
+      "description": "Room 17 bedside socket not working \u2014 guest reported. Investigated: loose connect"
+    },
+    "areas": {
+      "name": "Guest Rooms",
+      "icon": "\ud83d\udecf"
+    },
+    "rooms": {
+      "name": "Room 17"
+    },
+    "note": "Room 17 bedside socket not working \u2014 guest reported. Investigated: loose connection in back box, neutral conductor had backed out of terminal. Re-terminated securely. Tested under load \u2014 working correctly. All other sockets in room tested with plug tester \u2014 all satisfactory.",
+    "photo_urls": [
+      "https://picsum.photos/seed/socket-villa/600/400"
+    ]
+  },
+  {
+    "id": "dev65",
+    "prop_id": "dp2",
+    "area_id": "da2_2",
+    "room_id": null,
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2026-07-09T09:00:00Z",
+    "month_label": "Jul '26",
+    "tasks": {
+      "name": "Generator test",
+      "type": "misc",
+      "ref": "GEN",
+      "description": "Monthly test normal. Fuel 75%."
+    },
+    "areas": {
+      "name": "Plant/Pool/Kitchen",
+      "icon": "\u2699"
+    },
+    "rooms": null,
+    "note": "Monthly test normal. Fuel 75%.",
+    "photo_urls": [
+      "https://picsum.photos/seed/gen-villa2/600/400"
+    ]
+  },
+  {
+    "id": "dev66",
+    "prop_id": "dp2",
+    "area_id": "da2_1",
+    "room_id": "Room 17",
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2026-08-14T09:00:00Z",
+    "month_label": "Aug '26",
+    "tasks": {
+      "name": "Monthly electrical check",
+      "type": "elec",
+      "ref": "E-01",
+      "description": "Room 17 socket re-checked \u2014 still good. All 6 rooms this month tested with plug "
+    },
+    "areas": {
+      "name": "Guest Rooms",
+      "icon": "\ud83d\udecf"
+    },
+    "rooms": {
+      "name": "Room 17"
+    },
+    "note": "Room 17 socket re-checked \u2014 still good. All 6 rooms this month tested with plug tester \u2014 all satisfactory.",
+    "photo_urls": [
+      "https://picsum.photos/seed/electric-ok-villa/600/400"
+    ]
+  },
+  {
+    "id": "dev67",
+    "prop_id": "dp2",
+    "area_id": "da2_3",
+    "room_id": null,
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2026-08-14T09:00:00Z",
+    "month_label": "Aug '26",
+    "tasks": {
+      "name": "Pool chemistry",
+      "type": "pool",
+      "ref": "P-01",
+      "description": "End-of-season pool check. All parameters nominal. Pool running well into late su"
+    },
+    "areas": {
+      "name": "Plant/Pool/Kitchen",
+      "icon": "\u2699"
+    },
+    "rooms": null,
+    "note": "End-of-season pool check. All parameters nominal. Pool running well into late summer.",
+    "photo_urls": [
+      "https://picsum.photos/seed/pool-late/600/400"
+    ]
+  },
+  {
+    "id": "dev68",
+    "prop_id": "dp3",
+    "area_id": "da3_1",
+    "room_id": null,
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2025-09-10T09:00:00Z",
+    "month_label": "Sep '25",
+    "tasks": {
+      "name": "Q1 inspection \u2014 Apt 4A Tigne",
+      "type": "misc",
+      "ref": "PPM",
+      "description": "Full quarterly inspection completed. Hot water 51.3\u00b0C \u2713, cold 17.8\u00b0C \u2713. Mould in"
+    },
+    "areas": {
+      "name": "All Areas",
+      "icon": "\ud83c\udfe0"
+    },
+    "rooms": null,
+    "note": "Full quarterly inspection completed. Hot water 51.3\u00b0C \u2713, cold 17.8\u00b0C \u2713. Mould inspection \u2014 none found. Sealants good condition. All sockets tested \u2014 OK. AC filter cleaned. Drains flowing freely. Property in excellent condition.",
+    "photo_urls": [
+      "https://picsum.photos/seed/apt-tigne-q1/600/400",
+      "https://picsum.photos/seed/apt-tigne-q1b/600/400"
+    ]
+  },
+  {
+    "id": "dev69",
+    "prop_id": "dp3",
+    "area_id": "da3_1",
+    "room_id": null,
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2025-12-10T09:00:00Z",
+    "month_label": "Dec '25",
+    "tasks": {
+      "name": "Q2 inspection \u2014 Apt 4A Tigne",
+      "type": "misc",
+      "ref": "PPM",
+      "description": "Q2 inspection. All systems checked. Slight limescale on shower head \u2014 descaled w"
+    },
+    "areas": {
+      "name": "All Areas",
+      "icon": "\ud83c\udfe0"
+    },
+    "rooms": null,
+    "note": "Q2 inspection. All systems checked. Slight limescale on shower head \u2014 descaled with citric acid solution. Water temps good. No issues. Excellent property.",
+    "photo_urls": [
+      "https://picsum.photos/seed/apt-tigne-q2/600/400",
+      "https://picsum.photos/seed/apt-tigne-q2b/600/400"
+    ]
+  },
+  {
+    "id": "dev70",
+    "prop_id": "dp3",
+    "area_id": "da3_1",
+    "room_id": null,
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2026-03-10T09:00:00Z",
+    "month_label": "Mar '26",
+    "tasks": {
+      "name": "Q3 inspection \u2014 Apt 4A Tigne",
+      "type": "misc",
+      "ref": "PPM",
+      "description": "Q3 inspection. Pre-summer check. AC units serviced \u2014 both running well. Pool ter"
+    },
+    "areas": {
+      "name": "All Areas",
+      "icon": "\ud83c\udfe0"
+    },
+    "rooms": null,
+    "note": "Q3 inspection. Pre-summer check. AC units serviced \u2014 both running well. Pool terrace furniture inspected. Water temp and quality good. Property handed back to short-let management in excellent condition.",
+    "photo_urls": [
+      "https://picsum.photos/seed/apt-tigne-q3/600/400",
+      "https://picsum.photos/seed/apt-tigne-q3b/600/400"
+    ]
+  },
+  {
+    "id": "dev71",
+    "prop_id": "dp3",
+    "area_id": "da3_1",
+    "room_id": null,
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2026-06-10T09:00:00Z",
+    "month_label": "Jun '26",
+    "tasks": {
+      "name": "Q4 inspection \u2014 Apt 4A Tigne",
+      "type": "misc",
+      "ref": "PPM",
+      "description": "Q4 end-of-season inspection. All rooms checked. No defects noted. Excellent thro"
+    },
+    "areas": {
+      "name": "All Areas",
+      "icon": "\ud83c\udfe0"
+    },
+    "rooms": null,
+    "note": "Q4 end-of-season inspection. All rooms checked. No defects noted. Excellent throughout year. Recommended for gold-standard maintenance certificate.",
+    "photo_urls": [
+      "https://picsum.photos/seed/apt-tigne-q4/600/400",
+      "https://picsum.photos/seed/apt-tigne-q4b/600/400"
+    ]
+  },
+  {
+    "id": "dev72",
+    "prop_id": "dp4",
+    "area_id": "da4_1",
+    "room_id": null,
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2025-09-10T09:00:00Z",
+    "month_label": "Sep '25",
+    "tasks": {
+      "name": "Q1 inspection \u2014 Apt 7 Balluta",
+      "type": "misc",
+      "ref": "PPM",
+      "description": "Full quarterly inspection. Water temps OK. AC filters cleaned. Minor lime scale "
+    },
+    "areas": {
+      "name": "All Areas",
+      "icon": "\ud83c\udfe0"
+    },
+    "rooms": null,
+    "note": "Full quarterly inspection. Water temps OK. AC filters cleaned. Minor lime scale on kitchen tap aerator \u2014 cleared. All electrical OK. Good condition overall.",
+    "photo_urls": [
+      "https://picsum.photos/seed/apt-balluta-q1/600/400",
+      "https://picsum.photos/seed/apt-balluta-q1b/600/400"
+    ]
+  },
+  {
+    "id": "dev73",
+    "prop_id": "dp4",
+    "area_id": "da4_1",
+    "room_id": null,
+    "rag": "amber",
+    "quote_status": "requested",
+    "completed_at": "2025-12-10T09:00:00Z",
+    "month_label": "Dec '25",
+    "tasks": {
+      "name": "Q2 inspection \u2014 Apt 7 Balluta",
+      "type": "misc",
+      "ref": "PPM",
+      "description": "Q2 inspection: Bathroom ceiling showing water staining and bubbling paint approx"
+    },
+    "areas": {
+      "name": "All Areas",
+      "icon": "\ud83c\udfe0"
+    },
+    "rooms": null,
+    "note": "Q2 inspection: Bathroom ceiling showing water staining and bubbling paint approx 40\u00d730cm \u2014 suspected leak from apartment above. Source not confirmed. Owner notified. Recommend urgent investigation with building management. Biocide applied to stain as precaution. Photos taken.",
+    "photo_urls": [
+      "https://picsum.photos/seed/apt-balluta-q2/600/400",
+      "https://picsum.photos/seed/apt-balluta-q2b/600/400"
+    ]
+  },
+  {
+    "id": "dev74",
+    "prop_id": "dp4",
+    "area_id": "da4_1",
+    "room_id": null,
+    "rag": "green",
+    "quote_status": "approved",
+    "completed_at": "2026-03-10T09:00:00Z",
+    "month_label": "Mar '26",
+    "tasks": {
+      "name": "Q3 inspection \u2014 Apt 7 Balluta",
+      "type": "misc",
+      "ref": "PPM",
+      "description": "Q3 follow-up: Ceiling stain confirmed dry \u2014 leak from upstairs apartment resolve"
+    },
+    "areas": {
+      "name": "All Areas",
+      "icon": "\ud83c\udfe0"
+    },
+    "rooms": null,
+    "note": "Q3 follow-up: Ceiling stain confirmed dry \u2014 leak from upstairs apartment resolved by building management. Stained area re-plastered and painted by owner's contractor. Inspection confirms no active moisture. Property back to green status. All other checks satisfactory.",
+    "photo_urls": [
+      "https://picsum.photos/seed/apt-balluta-q3/600/400",
+      "https://picsum.photos/seed/apt-balluta-q3b/600/400"
+    ]
+  },
+  {
+    "id": "dev75",
+    "prop_id": "dp4",
+    "area_id": "da4_1",
+    "room_id": null,
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2026-06-10T09:00:00Z",
+    "month_label": "Jun '26",
+    "tasks": {
+      "name": "Q4 inspection \u2014 Apt 7 Balluta",
+      "type": "misc",
+      "ref": "PPM",
+      "description": "Q4 end-of-season check. All areas satisfactory. No issues. Ceiling repair holdin"
+    },
+    "areas": {
+      "name": "All Areas",
+      "icon": "\ud83c\udfe0"
+    },
+    "rooms": null,
+    "note": "Q4 end-of-season check. All areas satisfactory. No issues. Ceiling repair holding well \u2014 no recurrence of staining.",
+    "photo_urls": [
+      "https://picsum.photos/seed/apt-balluta-q4/600/400",
+      "https://picsum.photos/seed/apt-balluta-q4b/600/400"
+    ]
+  },
+  {
+    "id": "dev76",
+    "prop_id": "dp5",
+    "area_id": "da5_1",
+    "room_id": null,
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2025-09-10T09:00:00Z",
+    "month_label": "Sep '25",
+    "tasks": {
+      "name": "Q1 inspection \u2014 Portomaso",
+      "type": "misc",
+      "ref": "PPM",
+      "description": "Premium property full inspection. Hot water 53.1\u00b0C \u2713, cold 15.6\u00b0C \u2713 \u2014 excellent "
+    },
+    "areas": {
+      "name": "All Areas",
+      "icon": "\ud83c\udfe0"
+    },
+    "rooms": null,
+    "note": "Premium property full inspection. Hot water 53.1\u00b0C \u2713, cold 15.6\u00b0C \u2713 \u2014 excellent temperatures. 3 AC units serviced. Water softener salt level checked and topped up. All electrics tested \u2014 all satisfactory. High-spec property maintained to excellent standard.",
+    "photo_urls": [
+      "https://picsum.photos/seed/apt-porto-q1/600/400",
+      "https://picsum.photos/seed/apt-porto-q1b/600/400"
+    ]
+  },
+  {
+    "id": "dev77",
+    "prop_id": "dp5",
+    "area_id": "da5_1",
+    "room_id": null,
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2025-12-10T09:00:00Z",
+    "month_label": "Dec '25",
+    "tasks": {
+      "name": "Q2 inspection \u2014 Portomaso",
+      "type": "misc",
+      "ref": "PPM",
+      "description": "Q2 inspection. All systems in excellent condition. Miele appliances all function"
+    },
+    "areas": {
+      "name": "All Areas",
+      "icon": "\ud83c\udfe0"
+    },
+    "rooms": null,
+    "note": "Q2 inspection. All systems in excellent condition. Miele appliances all functioning. Smart home system checked \u2014 all sensors and controls operational. Sealants pristine. No defects.",
+    "photo_urls": [
+      "https://picsum.photos/seed/apt-porto-q2/600/400",
+      "https://picsum.photos/seed/apt-porto-q2b/600/400"
+    ]
+  },
+  {
+    "id": "dev78",
+    "prop_id": "dp5",
+    "area_id": "da5_1",
+    "room_id": null,
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2026-03-10T09:00:00Z",
+    "month_label": "Mar '26",
+    "tasks": {
+      "name": "Q3 inspection \u2014 Portomaso",
+      "type": "misc",
+      "ref": "PPM",
+      "description": "Q3 inspection. Pre-summer full check. Jacuzzi jets and pump inspected \u2014 all oper"
+    },
+    "areas": {
+      "name": "All Areas",
+      "icon": "\ud83c\udfe0"
+    },
+    "rooms": null,
+    "note": "Q3 inspection. Pre-summer full check. Jacuzzi jets and pump inspected \u2014 all operational. AC systems running optimally. Water softener regenerated. Property immaculate.",
+    "photo_urls": [
+      "https://picsum.photos/seed/apt-porto-q3/600/400",
+      "https://picsum.photos/seed/apt-porto-q3b/600/400"
+    ]
+  },
+  {
+    "id": "dev79",
+    "prop_id": "dp5",
+    "area_id": "da5_1",
+    "room_id": null,
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2026-06-10T09:00:00Z",
+    "month_label": "Jun '26",
+    "tasks": {
+      "name": "Q4 inspection \u2014 Portomaso",
+      "type": "misc",
+      "ref": "PPM",
+      "description": "Year-end inspection. All systems outstanding. Recommend continued current mainte"
+    },
+    "areas": {
+      "name": "All Areas",
+      "icon": "\ud83c\udfe0"
+    },
+    "rooms": null,
+    "note": "Year-end inspection. All systems outstanding. Recommend continued current maintenance regime. Annual compliance report issued for owner's records.",
+    "photo_urls": [
+      "https://picsum.photos/seed/apt-porto-q4/600/400",
+      "https://picsum.photos/seed/apt-porto-q4b/600/400"
+    ]
+  },
+  {
+    "id": "dev80",
+    "prop_id": "dp6",
+    "area_id": "da6_1",
+    "room_id": null,
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2025-09-10T09:00:00Z",
+    "month_label": "Sep '25",
+    "tasks": {
+      "name": "Q1 inspection \u2014 Marsaskala",
+      "type": "misc",
+      "ref": "PPM",
+      "description": "Quarterly inspection complete. Coastal property \u2014 checked for salt ingress aroun"
+    },
+    "areas": {
+      "name": "All Areas",
+      "icon": "\ud83c\udfe0"
+    },
+    "rooms": null,
+    "note": "Quarterly inspection complete. Coastal property \u2014 checked for salt ingress around window seals (none found). Water temps good. AC units cleaned. All satisfactory.",
+    "photo_urls": [
+      "https://picsum.photos/seed/apt-mars-q1/600/400",
+      "https://picsum.photos/seed/apt-mars-q1b/600/400"
+    ]
+  },
+  {
+    "id": "dev81",
+    "prop_id": "dp6",
+    "area_id": "da6_1",
+    "room_id": null,
+    "rag": "amber",
+    "quote_status": "requested",
+    "completed_at": "2025-12-10T09:00:00Z",
+    "month_label": "Dec '25",
+    "tasks": {
+      "name": "Q2 inspection \u2014 Marsaskala",
+      "type": "misc",
+      "ref": "PPM",
+      "description": "Q2 inspection: External window sealant on sea-facing facade showing UV degradati"
+    },
+    "areas": {
+      "name": "All Areas",
+      "icon": "\ud83c\udfe0"
+    },
+    "rooms": null,
+    "note": "Q2 inspection: External window sealant on sea-facing facade showing UV degradation and cracking. Two windows allowing minor draughts. Internal sealants still good. Quote raised to re-seal external windows (Soudaflex 40 FC UV-resistant). Not urgent but recommended before winter season.",
+    "photo_urls": [
+      "https://picsum.photos/seed/apt-mars-q2/600/400",
+      "https://picsum.photos/seed/apt-mars-q2b/600/400"
+    ]
+  },
+  {
+    "id": "dev82",
+    "prop_id": "dp6",
+    "area_id": "da6_1",
+    "room_id": null,
+    "rag": "green",
+    "quote_status": "approved",
+    "completed_at": "2026-03-10T09:00:00Z",
+    "month_label": "Mar '26",
+    "tasks": {
+      "name": "Q3 inspection \u2014 Marsaskala",
+      "type": "misc",
+      "ref": "PPM",
+      "description": "Q3 inspection. External window re-sealing completed by approved contractor (quot"
+    },
+    "areas": {
+      "name": "All Areas",
+      "icon": "\ud83c\udfe0"
+    },
+    "rooms": null,
+    "note": "Q3 inspection. External window re-sealing completed by approved contractor (quote approved). Internal and external seals now all in good condition. All other checks satisfactory.",
+    "photo_urls": [
+      "https://picsum.photos/seed/apt-mars-q3/600/400",
+      "https://picsum.photos/seed/apt-mars-q3b/600/400"
+    ]
+  },
+  {
+    "id": "dev83",
+    "prop_id": "dp6",
+    "area_id": "da6_1",
+    "room_id": null,
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2026-06-10T09:00:00Z",
+    "month_label": "Jun '26",
+    "tasks": {
+      "name": "Q4 inspection \u2014 Marsaskala",
+      "type": "misc",
+      "ref": "PPM",
+      "description": "Year-end inspection. No issues. Property in good condition. Window seals holding"
+    },
+    "areas": {
+      "name": "All Areas",
+      "icon": "\ud83c\udfe0"
+    },
+    "rooms": null,
+    "note": "Year-end inspection. No issues. Property in good condition. Window seals holding well after summer. All systems satisfactory.",
+    "photo_urls": [
+      "https://picsum.photos/seed/apt-mars-q4/600/400",
+      "https://picsum.photos/seed/apt-mars-q4b/600/400"
+    ]
+  },
+  {
+    "id": "dev84",
+    "prop_id": "dp7",
+    "area_id": "da7_1",
+    "room_id": null,
+    "rag": "red",
+    "quote_status": "requested",
+    "completed_at": "2025-09-10T09:00:00Z",
+    "month_label": "Sep '25",
+    "tasks": {
+      "name": "Q1 inspection \u2014 Apt 8 Mdina",
+      "type": "misc",
+      "ref": "PPM",
+      "description": "Q1 inspection: SERIOUS FINDINGS \u2014 (1) Hot water in main bathroom only 41\u00b0C \u2014 TMV"
+    },
+    "areas": {
+      "name": "All Areas",
+      "icon": "\ud83c\udfe0"
+    },
+    "rooms": null,
+    "note": "Q1 inspection: SERIOUS FINDINGS \u2014 (1) Hot water in main bathroom only 41\u00b0C \u2014 TMV failure suspected. (2) Mould covering 60% of bathroom ceiling \u2014 chronic ventilation failure. (3) Extraction fan not working (motor seized). All three issues represent health risk. Owner notified immediately. Quote raised urgently for: TMV replacement, mould remediation + repaint, extraction fan replacement.",
+    "photo_urls": [
+      "https://picsum.photos/seed/apt-mdina-q1/600/400",
+      "https://picsum.photos/seed/apt-mdina-q1b/600/400"
+    ]
+  },
+  {
+    "id": "dev85",
+    "prop_id": "dp7",
+    "area_id": "da7_1",
+    "room_id": null,
+    "rag": "amber",
+    "quote_status": "approved",
+    "completed_at": "2025-12-10T09:00:00Z",
+    "month_label": "Dec '25",
+    "tasks": {
+      "name": "Q2 inspection \u2014 Apt 8 Mdina",
+      "type": "misc",
+      "ref": "PPM",
+      "description": "Q2 follow-up: Good progress. (1) TMV replaced \u2014 hot water now 51.8\u00b0C \u2713. (2) Extr"
+    },
+    "areas": {
+      "name": "All Areas",
+      "icon": "\ud83c\udfe0"
+    },
+    "rooms": null,
+    "note": "Q2 follow-up: Good progress. (1) TMV replaced \u2014 hot water now 51.8\u00b0C \u2713. (2) Extraction fan replaced \u2014 bathroom now ventilating correctly. (3) Mould treatment applied \u2014 growth arrested, ceiling repainted. Minor residual discolouration on one wall. Re-sealing of bath sealant done. Property improving significantly. All remediation works signed off.",
+    "photo_urls": [
+      "https://picsum.photos/seed/apt-mdina-q2/600/400",
+      "https://picsum.photos/seed/apt-mdina-q2b/600/400"
+    ]
+  },
+  {
+    "id": "dev86",
+    "prop_id": "dp7",
+    "area_id": "da7_1",
+    "room_id": null,
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2026-03-10T09:00:00Z",
+    "month_label": "Mar '26",
+    "tasks": {
+      "name": "Q3 inspection \u2014 Apt 8 Mdina",
+      "type": "misc",
+      "ref": "PPM",
+      "description": "Q3 inspection: Full recovery confirmed. Hot water 52.4\u00b0C \u2713, cold 18.2\u00b0C \u2713. No mo"
+    },
+    "areas": {
+      "name": "All Areas",
+      "icon": "\ud83c\udfe0"
+    },
+    "rooms": null,
+    "note": "Q3 inspection: Full recovery confirmed. Hot water 52.4\u00b0C \u2713, cold 18.2\u00b0C \u2713. No mould recurrence \u2014 6 months since treatment. Extraction fan working perfectly \u2014 bathroom humidity levels normal. Sealants good. Property now fully compliant and in good condition.",
+    "photo_urls": [
+      "https://picsum.photos/seed/apt-mdina-q3/600/400",
+      "https://picsum.photos/seed/apt-mdina-q3b/600/400"
+    ]
+  },
+  {
+    "id": "dev87",
+    "prop_id": "dp7",
+    "area_id": "da7_1",
+    "room_id": null,
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2026-06-10T09:00:00Z",
+    "month_label": "Jun '26",
+    "tasks": {
+      "name": "Q4 inspection \u2014 Apt 8 Mdina",
+      "type": "misc",
+      "ref": "PPM",
+      "description": "Year-end inspection. Property maintained in good condition throughout second hal"
+    },
+    "areas": {
+      "name": "All Areas",
+      "icon": "\ud83c\udfe0"
+    },
+    "rooms": null,
+    "note": "Year-end inspection. Property maintained in good condition throughout second half of year. No defects. Excellent improvement since Q1 \u2014 testament to prompt remediation. Annual report issued.",
+    "photo_urls": [
+      "https://picsum.photos/seed/apt-mdina-q4/600/400",
+      "https://picsum.photos/seed/apt-mdina-q4b/600/400"
+    ]
+  },
+  {
+    "id": "dev88",
+    "prop_id": "dp8",
+    "area_id": "da8_1",
+    "room_id": null,
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2025-09-10T09:00:00Z",
+    "month_label": "Sep '25",
+    "tasks": {
+      "name": "Q1 inspection \u2014 Birgu Waterfront",
+      "type": "misc",
+      "ref": "PPM",
+      "description": "Quarterly inspection of historic property. Water system checked \u2014 hot water 50.8"
+    },
+    "areas": {
+      "name": "All Areas",
+      "icon": "\ud83c\udfe0"
+    },
+    "rooms": null,
+    "note": "Quarterly inspection of historic property. Water system checked \u2014 hot water 50.8\u00b0C \u2713 (stone walls make heating slower \u2014 system performing well). Traditional casement windows inspected \u2014 seals in good condition. AC split units serviced. All satisfactory.",
+    "photo_urls": [
+      "https://picsum.photos/seed/apt-birgu-q1/600/400",
+      "https://picsum.photos/seed/apt-birgu-q1b/600/400"
+    ]
+  },
+  {
+    "id": "dev89",
+    "prop_id": "dp8",
+    "area_id": "da8_1",
+    "room_id": null,
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2025-12-10T09:00:00Z",
+    "month_label": "Dec '25",
+    "tasks": {
+      "name": "Q2 inspection \u2014 Birgu Waterfront",
+      "type": "misc",
+      "ref": "PPM",
+      "description": "Q2 inspection. Character property in excellent condition. Natural stone walls in"
+    },
+    "areas": {
+      "name": "All Areas",
+      "icon": "\ud83c\udfe0"
+    },
+    "rooms": null,
+    "note": "Q2 inspection. Character property in excellent condition. Natural stone walls inspected for damp \u2014 none found. Roof terrace access hatch sealed. Solar water heater inspected and performing well. All checks satisfactory.",
+    "photo_urls": [
+      "https://picsum.photos/seed/apt-birgu-q2/600/400",
+      "https://picsum.photos/seed/apt-birgu-q2b/600/400"
+    ]
+  },
+  {
+    "id": "dev90",
+    "prop_id": "dp8",
+    "area_id": "da8_1",
+    "room_id": null,
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2026-03-10T09:00:00Z",
+    "month_label": "Mar '26",
+    "tasks": {
+      "name": "Q3 inspection \u2014 Birgu Waterfront",
+      "type": "misc",
+      "ref": "PPM",
+      "description": "Q3 inspection. Property very well maintained. Harbour views and exposed stone in"
+    },
+    "areas": {
+      "name": "All Areas",
+      "icon": "\ud83c\udfe0"
+    },
+    "rooms": null,
+    "note": "Q3 inspection. Property very well maintained. Harbour views and exposed stone in excellent condition. All systems checked \u2014 water, electrical, HVAC, fabric all satisfactory. Highly recommend for PPM award.",
+    "photo_urls": [
+      "https://picsum.photos/seed/apt-birgu-q3/600/400",
+      "https://picsum.photos/seed/apt-birgu-q3b/600/400"
+    ]
+  },
+  {
+    "id": "dev91",
+    "prop_id": "dp8",
+    "area_id": "da8_1",
+    "room_id": null,
+    "rag": "green",
+    "quote_status": "none",
+    "completed_at": "2026-06-10T09:00:00Z",
+    "month_label": "Jun '26",
+    "tasks": {
+      "name": "Q4 inspection \u2014 Birgu Waterfront",
+      "type": "misc",
+      "ref": "PPM",
+      "description": "Year-end inspection. Outstanding property maintained to high standard throughout"
+    },
+    "areas": {
+      "name": "All Areas",
+      "icon": "\ud83c\udfe0"
+    },
+    "rooms": null,
+    "note": "Year-end inspection. Outstanding property maintained to high standard throughout the year. No defects recorded. All compliance logs up to date. Excellent owner engagement.",
+    "photo_urls": [
+      "https://picsum.photos/seed/apt-birgu-q4/600/400",
+      "https://picsum.photos/seed/apt-birgu-q4b/600/400"
+    ]
+  }
 ];
+
 const DEMO_SCHEDULE={
-  "dp1":{
-    "Sep '26":"approved","Oct '26":"proposed","Nov '26":"proposed",
-    "Dec '26":"proposed","Jan '27":"proposed","Feb '27":"proposed",
-    "Mar '27":"proposed","Apr '27":"proposed","May '27":"proposed",
-    "Jun '27":"proposed","Jul '27":"proposed","Aug '27":"proposed",
+  "dp1": {
+    "Sep '26": "approved",
+    "Oct '26": "approved",
+    "Nov '26": "approved",
+    "Dec '26": "approved",
+    "Jan '27": "proposed",
+    "Feb '27": "proposed",
+    "Mar '27": "proposed",
+    "Apr '27": "proposed",
+    "May '27": "proposed",
+    "Jun '27": "proposed",
+    "Jul '27": "proposed",
+    "Aug '27": "proposed",
+    "Sep '27": "proposed"
+  },
+  "dp2": {
+    "Sep '26": "approved",
+    "Oct '26": "approved",
+    "Nov '26": "approved",
+    "Dec '26": "approved",
+    "Jan '27": "proposed",
+    "Feb '27": "proposed",
+    "Mar '27": "proposed",
+    "Apr '27": "proposed",
+    "May '27": "proposed",
+    "Jun '27": "proposed",
+    "Jul '27": "proposed",
+    "Aug '27": "proposed",
+    "Sep '27": "proposed"
+  },
+  "dp3": {
+    "Sep '26": "approved",
+    "Dec '26": "approved",
+    "Mar '27": "proposed",
+    "Jun '27": "proposed",
+    "Sep '27": "proposed"
+  },
+  "dp4": {
+    "Sep '26": "approved",
+    "Dec '26": "approved",
+    "Mar '27": "proposed",
+    "Jun '27": "proposed",
+    "Sep '27": "proposed"
+  },
+  "dp5": {
+    "Sep '26": "approved",
+    "Dec '26": "approved",
+    "Mar '27": "proposed",
+    "Jun '27": "proposed",
+    "Sep '27": "proposed"
+  },
+  "dp6": {
+    "Sep '26": "approved",
+    "Dec '26": "approved",
+    "Mar '27": "proposed",
+    "Jun '27": "proposed",
+    "Sep '27": "proposed"
+  },
+  "dp7": {
+    "Sep '26": "approved",
+    "Dec '26": "approved",
+    "Mar '27": "proposed",
+    "Jun '27": "proposed",
+    "Sep '27": "proposed"
+  },
+  "dp8": {
+    "Sep '26": "approved",
+    "Dec '26": "approved",
+    "Mar '27": "proposed",
+    "Jun '27": "proposed",
+    "Sep '27": "proposed"
   }
 };
 
+
 // Demo-mode db override
 function makeDemoDb(){
+  // Compute RAG for each area from events
+  function areaRagFromEvents(propId,areaId){
+    const ev=DEMO_EVENTS.filter(e=>e.prop_id===propId&&e.area_id===areaId);
+    if(ev.some(e=>e.rag==="red"))return"red";
+    if(ev.some(e=>e.rag==="amber"))return"amber";
+    return"green";
+  }
+  function propRagFromEvents(propId){
+    const ev=DEMO_EVENTS.filter(e=>e.prop_id===propId);
+    if(ev.some(e=>e.rag==="red"))return"red";
+    if(ev.some(e=>e.rag==="amber"))return"amber";
+    return"green";
+  }
   return{
     async login(email){
       const u=DEMO_USERS[email];
       return{data:u||null,error:u?null:{message:"Not found"}};
     },
     async getProperties(ids){
-      if(!ids||!ids.length)return DEMO_PROPS;
-      return DEMO_PROPS.filter(p=>ids.includes(p.id));
+      const ps=ids&&ids.length?DEMO_PROPS.filter(p=>ids.includes(p.id)):DEMO_PROPS;
+      return ps.map(p=>({...p,rag:propRagFromEvents(p.id)}));
     },
     async getEvents(f){
       f=f||{};
-      let ev=DEMO_EVENTS;
+      let ev=[...DEMO_EVENTS];
       if(f.propId)ev=ev.filter(e=>e.prop_id===f.propId);
       if(f.propIds&&f.propIds.length)ev=ev.filter(e=>f.propIds.includes(e.prop_id));
       if(f.areaId)ev=ev.filter(e=>e.area_id===f.areaId);
       if(f.roomId)ev=ev.filter(e=>e.room_id===f.roomId);
-      return ev;
+      if(f.month)ev=ev.filter(e=>e.month_label===f.month);
+      return ev.sort((a,b)=>b.completed_at.localeCompare(a.completed_at));
     },
     async getAreas(propId){
-      const areas={
-        dp1:[{id:"da1",prop_id:"dp1",name:"Guest Rooms",icon:"🛏",has_rooms:true,sort_order:1,rag:"amber"},
-              {id:"da2",prop_id:"dp1",name:"Roof & Plant",icon:"⚡",has_rooms:false,sort_order:2,rag:"amber"},
-              {id:"da3",prop_id:"dp1",name:"Pool Terrace",icon:"🏊",has_rooms:false,sort_order:3,rag:"red"},
-              {id:"da4",prop_id:"dp1",name:"Breakfast Area",icon:"☕",has_rooms:false,sort_order:4,rag:"amber"}],
-        dp3:[{id:"da5",prop_id:"dp3",name:"Bathroom",icon:"🚿",has_rooms:false,sort_order:1,rag:"red"}],
-        dp4:[{id:"da6",prop_id:"dp4",name:"Living Area",icon:"🛋",has_rooms:false,sort_order:1,rag:"amber"}],
-      };
-      return areas[propId]||[{id:"da_gen",prop_id:propId,name:"All Areas",icon:"🏠",has_rooms:false,sort_order:1,rag:"green"}];
+      const arList=DEMO_AREAS[propId]||[{id:"da_gen",prop_id:propId,name:"All Areas",icon:"🏠",has_rooms:false,sort_order:1,rag:"green"}];
+      return arList.map(a=>({...a,rag:areaRagFromEvents(propId,a.id)}));
     },
     async getRooms(){return[];},
     async getTasksForArea(){return[];},
@@ -677,10 +3292,9 @@ function Login({onLogin}){
   };
 
   const DEMO_ROLES=[
-    {key:"demo.admin",label:"Admin portal",icon:"🔧",desc:"Full access — all properties, schedule, events, manage"},
-    {key:"demo.hotel",label:"Hotel owner",icon:"🏨",desc:"Grand Harbour Hotel — 22 rooms, urgent events, schedule"},
-    {key:"demo.apts",label:"Apartment owner",icon:"🏠",desc:"5 apartments — mix of green / amber / urgent"},
-    {key:"demo.tech",label:"Technician",icon:"👷",desc:"Tech portal — visit schedule & task completion"},
+    {key:"demo.admin",label:"Admin portal",icon:"🔧",desc:"Full access — all 8 properties, schedule, events, manage users"},
+    {key:"demo.owner",label:"Mr Borg — Property Owner",icon:"🏨",desc:"2 hotels + 6 apartments — full event history, schedules, quote workflow"},
+    {key:"demo.tech",label:"Technician",icon:"👷",desc:"Tech portal — visit schedule & task completion flow"},
   ];
 
   return e("div",{style:{minHeight:"100vh",background:C.nav,display:"flex",alignItems:"center",justifyContent:"center",padding:16}},
