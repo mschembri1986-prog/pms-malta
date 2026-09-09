@@ -4018,6 +4018,29 @@ function OwnerPending({user}){
 }
 
 // ── OWNER REPORTS ──────────────────────────────────────────────────────────
+function ReportEventList({monthEvents,props}){
+  const byProp={};
+  monthEvents.forEach(function(ev){
+    if(!byProp[ev.prop_id])byProp[ev.prop_id]={name:(props.find(function(p){return p.id===ev.prop_id;})||{}).name||ev.prop_id,areas:{}};
+    var aid=ev.area_id||"g";
+    if(!byProp[ev.prop_id].areas[aid])byProp[ev.prop_id].areas[aid]={name:(ev.areas&&((ev.areas.icon||"")+" "+(ev.areas.name||"")))||"General",events:[]};
+    byProp[ev.prop_id].areas[aid].events.push(ev);
+  });
+  return e("div",null,
+    Object.values(byProp).map(function(prop){
+      return e("div",{key:prop.name,style:{marginBottom:20}},
+        e("div",{style:{fontWeight:800,fontSize:15,color:C.white,background:C.nav,padding:"10px 14px",borderRadius:"8px 8px 0 0"}},prop.name),
+        Object.values(prop.areas).map(function(area){
+          return e("div",{key:area.name,style:{border:"1px solid "+C.line,borderTop:"none",marginBottom:2,borderRadius:"0 0 6px 6px"}},
+            e("div",{style:{fontSize:12,fontWeight:700,color:C.teal,padding:"7px 14px",background:C.tealL}},area.name),
+            area.events.map(function(ev){
+              return e("div",{key:ev.id,style:{padding:"10px 14px",borderBottom:"1px solid "+C.line}},
+                e(EventCard,{event:ev,showActions:false,showProp:false}));
+            }));
+        }));
+    }));
+}
+
 function OwnerReports({user}){
   const[events,setEvents]=useState([]);const[props,setProps]=useState([]);const[loading,setLoading]=useState(true);
   const[selMonth,setSelMonth]=useState(null);const[selProp,setSelProp]=useState("all");
@@ -4149,16 +4172,7 @@ function OwnerReports({user}){
         e(Btn,{variant:"primary",onClick:()=>printReport(selMonth,selProp)},"🖨 Print / Save PDF")),
 
       // Group by property then area
-      (()=>{
-        const byProp={};
-        monthEvents.forEach(ev=>{if(!byProp[ev.prop_id])byProp[ev.prop_id]={name:(props.find(p=>p.id===ev.prop_id)||{}).name||ev.prop_id,areas:{}};const aid=ev.area_id||"g";if(!byProp[ev.prop_id].areas[aid])byProp[ev.prop_id].areas[aid]={name:(ev.areas&&((ev.areas.icon||"")+" "+(ev.areas.name||"")))||"General",events:[]};byProp[ev.prop_id].areas[aid].events.push(ev);});
-        return Object.values(byProp).map(prop=>e("div",{key:prop.name,style:{marginBottom:20}},
-          e("div",{style:{fontWeight:800,fontSize:15,color:C.white,background:C.nav,padding:"10px 14px",borderRadius:"8px 8px 0 0"}},prop.name),
-          Object.values(prop.areas).map(area=>e("div",{key:area.name,style:{border:"1px solid "+C.line,borderTop:"none",marginBottom:2,borderRadius:"0 0 6px 6px"}},
-            e("div",{style:{fontSize:12,fontWeight:700,color:C.teal,padding:"7px 14px",background:C.tealL}},area.name),
-            area.events.map(ev=>e("div",{key:ev.id,style:{padding:"10px 14px",borderBottom:"1px solid "+C.line}},
-              e(EventCard,{event:ev,showActions:false,showProp:false})))))))));
-      })()));
+      e(ReportEventList,{monthEvents,props})));
 }
 
 // ── NAV CONFIG ─────────────────────────────────────────────────────────────
