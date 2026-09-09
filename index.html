@@ -444,6 +444,42 @@ const db={
     const{error}=await SUPA.from("tasks").insert({id,...d,active:true});
     if(error)throw error;return id;
   },
+  // ── ITEMS ──────────────────────────────────────────────────────
+  async getItemPresets(){
+    const{data}=await SUPA.from("item_presets").select("*,item_preset_tasks(*)").order("category");
+    return data||[];
+  },
+  async getItems(propId,areaId){
+    let q=SUPA.from("items").select("*,item_tasks(*),sub_items(*)").eq("prop_id",propId);
+    if(areaId)q=q.eq("area_id",areaId);
+    const{data}=await q;return data||[];
+  },
+  async addItem(d){
+    const id="it"+Date.now();
+    const{error}=await SUPA.from("items").insert({id,...d,status:"active"});
+    if(error)throw error;
+    // Auto-create item_tasks from preset
+    if(d.preset_id){
+      const{data:ptasks}=await SUPA.from("item_preset_tasks").select("*").eq("preset_id",d.preset_id);
+      for(const pt of(ptasks||[])){
+        const tid="itk"+Date.now()+Math.random().toString(36).slice(2,6);
+        await SUPA.from("item_tasks").insert({id:tid,item_id:id,prop_id:d.prop_id,area_id:d.area_id,
+          preset_task_id:pt.id,ref:pt.ref,name:pt.name,description:pt.description,
+          frequency:pt.frequency,pass_fail:pt.pass_fail,photo_req:pt.photo_req,
+          est_minutes:pt.est_minutes,type:pt.type,bom:pt.bom,active:true});
+      }
+    }
+    return id;
+  },
+  async updateItem(id,d){await SUPA.from("items").update(d).eq("id",id);},
+  async addSubItem(itemId,d){
+    const id="si"+Date.now();
+    await SUPA.from("sub_items").insert({id,item_id:itemId,...d,status:"active"});return id;
+  },
+  async getItemEvents(itemId){
+    const{data}=await SUPA.from("events").select("*,tasks(ref,name,type)").eq("item_id",itemId).order("completed_at",{ascending:false});
+    return data||[];
+  },
 };
 
 // ── HELPERS ────────────────────────────────────────────────────────────────
@@ -880,6 +916,73 @@ const DEMO_SCHEDULE={
 };
 
 
+
+// ── DEMO ITEMS ─────────────────────────────────────────────────────────────
+const DEMO_ITEM_PRESETS=[
+  {id:"ip_socket",    name:"Socket Outlet",          category:"Electrical",  icon:"🔌", description:"Mains socket outlet. Found in rooms, common areas, BOH."},
+  {id:"ip_light",     name:"Light Fitting",           category:"Electrical",  icon:"💡", description:"Light fitting — pendant, downlight, batten."},
+  {id:"ip_emlight",   name:"Emergency Light",         category:"Fire",        icon:"🔦", description:"Emergency lighting unit with battery backup."},
+  {id:"ip_db",        name:"Distribution Board",      category:"Electrical",  icon:"⚡", description:"Electrical DB — MCBs, RCDs, isolators, busbars."},
+  {id:"ip_extinguisher",name:"Fire Extinguisher",     category:"Fire",        icon:"🧯", description:"Portable fire extinguisher — CO2, dry powder, foam."},
+  {id:"ip_fire_alarm",name:"Fire Alarm Panel",        category:"Fire",        icon:"🚨", description:"Addressable fire alarm panel."},
+  {id:"ip_pool_pump", name:"Pool Pump",               category:"Pool",        icon:"🏊", description:"Pool circulation pump — wet end, motor, pre-filter."},
+  {id:"ip_ac_split",  name:"AC Split Unit",           category:"HVAC",        icon:"❄️", description:"Split air conditioning unit."},
+  {id:"ip_heat_pump", name:"Heat Pump",               category:"HVAC",        icon:"🔄", description:"Air-to-water heat pump."},
+  {id:"ip_tmv",       name:"Thermostatic Mixing Valve",category:"Plumbing",   icon:"🚿", description:"TMV — blends hot and cold to safe outlet temp."},
+  {id:"ip_generator", name:"Generator",               category:"Mechanical",  icon:"🔋", description:"Standby diesel generator with ATS."},
+  {id:"ip_rodent_station",name:"Rodent Bait Station", category:"Pest",        icon:"🐀", description:"Tamper-resistant rodent bait station."},
+  {id:"ip_shower_head",name:"Shower Head / Aerator",  category:"Plumbing",   icon:"🚿", description:"Shower head and basin aerator."},
+  {id:"ip_calorifier",name:"Hot Water Calorifier",    category:"Plumbing",   icon:"♨️", description:"Hot water storage vessel with thermostat."},
+  {id:"ip_water_tank",name:"Cold Water Tank",         category:"Plumbing",   icon:"🪣", description:"Cold water storage tank."},
+];
+
+const DEMO_ITEMS=[
+  // HOTEL 1 — Harbour Grand
+  {id:"di1", prop_id:"dp1",area_id:"da1_2",room_id:null,preset_id:"ip_generator",  name:"Main Standby Generator",     category:"Mechanical",icon:"🔋",manufacturer:"Pramac",   model:"S12000",serial_number:"PRM-2019-04471",year_of_mfr:2019,status:"active",notes:"80kVA diesel. Auto-transfer switch fitted. Last full service Oct '25."},
+  {id:"di2", prop_id:"dp1",area_id:"da1_2",room_id:null,preset_id:"ip_db",          name:"Main Distribution Board",     category:"Electrical",icon:"⚡",manufacturer:"Schneider",model:"Pragma D",serial_number:"SCH-DB-001",year_of_mfr:2018,status:"active",notes:"18-way DB. Supplies all floors and plant. Pool pump MCB-12 replaced Dec '25."},
+  {id:"di3", prop_id:"dp1",area_id:"da1_2",room_id:null,preset_id:"ip_heat_pump",   name:"Daikin Heat Pump Unit 1",     category:"HVAC",      icon:"🔄",manufacturer:"Daikin",   model:"EWAQ-C",serial_number:"DKN-HP-2021-0089",year_of_mfr:2021,status:"active",notes:"Primary heating/cooling. Condenser coil blocked Jul '26 — cleaned. Full service Aug '26."},
+  {id:"di4", prop_id:"dp1",area_id:"da1_2",room_id:null,preset_id:"ip_calorifier",  name:"Hot Water Calorifier",        category:"Plumbing",  icon:"♨️",manufacturer:"Lochinvar",model:"SSC-300",serial_number:"LOC-300-2020",year_of_mfr:2020,status:"active",notes:"300L indirect calorifier. Set point 60°C. Thermostat checked monthly."},
+  {id:"di5", prop_id:"dp1",area_id:"da1_2",room_id:null,preset_id:"ip_water_tank",  name:"Cold Water Tank (Roof)",      category:"Plumbing",  icon:"🪣",manufacturer:"Harlequin",model:"CT-1500",serial_number:null,year_of_mfr:2017,status:"active",notes:"1,500L polyethylene tank. Lid and float valve checked monthly."},
+  {id:"di6", prop_id:"dp1",area_id:"da1_3",room_id:null,preset_id:"ip_pool_pump",   name:"Pool Main Circulation Pump",  category:"Pool",      icon:"🏊",manufacturer:"Hayward",  model:"TriStar VS",serial_number:"HAY-VS-2022-1134",year_of_mfr:2022,status:"active",notes:"Variable speed pump. 4-star energy rating. Pre-filter cleaned monthly."},
+  {id:"di7", prop_id:"dp1",area_id:"da1_5",room_id:null,preset_id:"ip_fire_alarm",  name:"Fire Alarm Panel",            category:"Fire",      icon:"🚨",manufacturer:"Hochiki",  model:"ESP-120",serial_number:"HCK-ESP-2020-0441",year_of_mfr:2020,status:"active",notes:"120-zone addressable panel. 24 call points, 18 detectors. Bi-annual test and drill."},
+  {id:"di8", prop_id:"dp1",area_id:"da1_1",room_id:"Room 205",preset_id:"ip_tmv",   name:"TMV — Room 205 Shower",       category:"Plumbing",  icon:"🚿",manufacturer:"Honeywell",model:"AM-101",serial_number:null,year_of_mfr:2018,status:"active",notes:"Replaced Dec '25 as part of mould remediation. Set to 42°C."},
+  {id:"di9", prop_id:"dp1",area_id:"da1_1",room_id:"Room 415",preset_id:"ip_tmv",   name:"TMV — Room 415 Bathroom",     category:"Plumbing",  icon:"🚿",manufacturer:"Honeywell",model:"AM-101",serial_number:null,year_of_mfr:2023,status:"active",notes:"Replaced Mar '26 after diaphragm failure. New Honeywell TMV3. Calibrated to 42°C outlet."},
+  {id:"di10",prop_id:"dp1",area_id:"da1_3",room_id:null,preset_id:"ip_extinguisher",name:"CO2 Extinguisher — Pool",     category:"Fire",      icon:"🧯",manufacturer:"Amerex",   model:"B260",serial_number:"AMX-2023-7712",year_of_mfr:2023,status:"active",notes:"5kg CO2. Last service Jan '26. Next service Jan '27."},
+  {id:"di11",prop_id:"dp1",area_id:"da1_4",room_id:null,preset_id:"ip_extinguisher",name:"Dry Powder — Breakfast Area", category:"Fire",      icon:"🧯",manufacturer:"Amerex",   model:"B570",serial_number:"AMX-2023-7713",year_of_mfr:2023,status:"active",notes:"6kg dry powder. Last service Jan '26. Next service Jan '27."},
+  // Hotel 1 — rodent stations
+  {id:"di12",prop_id:"dp1",area_id:"da1_4",room_id:null,preset_id:"ip_rodent_station",name:"Rodent Station #1 — Kitchen",  category:"Pest",icon:"🐀",manufacturer:"Rentokil",model:"T-Rex",serial_number:"RS-001",year_of_mfr:2024,status:"active",notes:"Under kitchen sink unit. Quarterly bait refills."},
+  {id:"di13",prop_id:"dp1",area_id:"da1_2",room_id:null,preset_id:"ip_rodent_station",name:"Rodent Station #2 — Plant Room",category:"Pest",icon:"🐀",manufacturer:"Rentokil",model:"T-Rex",serial_number:"RS-002",year_of_mfr:2024,status:"active",notes:"External plant room door. Higher activity noted Jul '26 — refilled and repositioned."},
+
+  // HOTEL 2 — Villa Rosa
+  {id:"di20",prop_id:"dp2",area_id:"da2_2",room_id:null,preset_id:"ip_generator",  name:"Standby Generator",           category:"Mechanical",icon:"🔋",manufacturer:"Genset",   model:"GS8000",serial_number:"GS-2020-1122",year_of_mfr:2020,status:"active",notes:"65kVA diesel. Auto-transfer switch. Monthly test runs."},
+  {id:"di21",prop_id:"dp2",area_id:"da2_2",room_id:null,preset_id:"ip_db",          name:"Main DB — Villa Rosa",        category:"Electrical",icon:"⚡",manufacturer:"Hager",    model:"VKK118T",serial_number:"HAG-DB-2020",year_of_mfr:2020,status:"active",notes:"18-way DB. Bi-annual IR scan — clear."},
+  {id:"di22",prop_id:"dp2",area_id:"da2_3",room_id:null,preset_id:"ip_pool_pump",   name:"Garden Pool Pump",            category:"Pool",      icon:"🏊",manufacturer:"Pentair",  model:"SuperFlo VS",serial_number:"PEN-VS-2021",year_of_mfr:2021,status:"active",notes:"Variable speed. Pre-filter cleaned monthly. Running well."},
+  {id:"di23",prop_id:"dp2",area_id:"da2_2",room_id:null,preset_id:"ip_fire_alarm",  name:"Fire Alarm Panel",            category:"Fire",      icon:"🚨",manufacturer:"Notifier", model:"AFP-200",serial_number:"NOT-2019-0881",year_of_mfr:2019,status:"active",notes:"Conventional panel. 12 zones. Bi-annual test."},
+  {id:"di24",prop_id:"dp2",area_id:"da2_4",room_id:null,preset_id:"ip_extinguisher",name:"CO2 Extinguisher — Kitchen",  category:"Fire",      icon:"🧯",manufacturer:"Amerex",   model:"B260",serial_number:"AMX-2022-6601",year_of_mfr:2022,status:"active",notes:"5kg CO2 for kitchen use. Annual service."},
+
+  // APARTMENTS
+  {id:"di30",prop_id:"dp7",area_id:"da7_1",room_id:null,preset_id:"ip_tmv",         name:"TMV — Main Bathroom",         category:"Plumbing",  icon:"🚿",manufacturer:"Honeywell",model:"AM-101",serial_number:null,year_of_mfr:2026,status:"active",notes:"New unit installed Q2 after diaphragm failure found Q1. Set to 42°C outlet temperature."},
+  {id:"di31",prop_id:"dp4",area_id:"da4_1",room_id:null,preset_id:"ip_ac_split",    name:"AC Unit — Living Room",       category:"HVAC",      icon:"❄️",manufacturer:"Mitsubishi",model:"MSZ-AP",serial_number:"MIT-2021-0441",year_of_mfr:2021,status:"active",notes:"Drain blockage cleared Q2. Drain tray and coil now monitored every quarter."},
+  {id:"di32",prop_id:"dp3",area_id:"da3_1",room_id:null,preset_id:"ip_extinguisher",name:"CO2 Extinguisher",            category:"Fire",      icon:"🧯",manufacturer:"Amerex",   model:"B260",serial_number:"AMX-2023-5501",year_of_mfr:2023,status:"active",notes:"1kg CO2. Annual inspection. Last checked Q1."},
+];
+
+const DEMO_SUB_ITEMS=[
+  // Main DB sub-items
+  {id:"dsi1",item_id:"di2",name:"MCB-01 — Lighting Floor 1",    type:"MCB",rating:"16A Type B",serial_number:null,status:"active",notes:""},
+  {id:"dsi2",item_id:"di2",name:"MCB-02 — Power Floor 1",       type:"MCB",rating:"32A Type B",serial_number:null,status:"active",notes:""},
+  {id:"dsi3",item_id:"di2",name:"MCB-07 — Lighting Floor 2",    type:"MCB",rating:"16A Type B",serial_number:null,status:"active",notes:""},
+  {id:"dsi4",item_id:"di2",name:"MCB-12 — Pool pump circuit",   type:"MCB",rating:"32A Type C",serial_number:"SCH-MCB-12",status:"active",notes:"Replaced Dec '25 after busbar scorch. Upgraded from 25A Type B."},
+  {id:"dsi5",item_id:"di2",name:"RCD-A — Floors 1 & 2",        type:"RCD",rating:"63A 30mA",  serial_number:null,status:"active",notes:"Tested quarterly. Last test OK Apr '26."},
+  {id:"dsi6",item_id:"di2",name:"RCD-B — Floors 3 & Plant",    type:"RCD",rating:"63A 30mA",  serial_number:null,status:"active",notes:"Tested quarterly. All OK."},
+  {id:"dsi7",item_id:"di2",name:"Main Isolator",                 type:"Isolator",rating:"200A",serial_number:null,status:"active",notes:"Fused switch disconnector. Checked bi-annually."},
+  // Fire alarm sub-items
+  {id:"dsi8", item_id:"di7",name:"Call Point CP-01 — Reception",    type:"Call Point",rating:null,serial_number:"CP-001",status:"active",notes:"Break glass. Tested bi-annually."},
+  {id:"dsi9", item_id:"di7",name:"Call Point CP-02 — Floor 1 Cor.", type:"Call Point",rating:null,serial_number:"CP-002",status:"active",notes:""},
+  {id:"dsi10",item_id:"di7",name:"Detector DET-01 — Reception",     type:"Smoke Detector",rating:null,serial_number:"DET-001",status:"active",notes:"Optical smoke detector."},
+  {id:"dsi11",item_id:"di7",name:"Detector DET-02 — Kitchen",       type:"Heat Detector",rating:null,serial_number:"DET-002",status:"active",notes:"Rate-of-rise heat detector. Kitchen use."},
+  {id:"dsi12",item_id:"di7",name:"Battery Backup — 24V 17Ah",       type:"Battery",rating:"24V 17Ah",serial_number:"BAT-2022",status:"active",notes:"Sealed lead-acid. Replace 2027."},
+];
+
 // Demo-mode db override
 function makeDemoDb(){
   // Compute RAG for each area from events
@@ -938,6 +1041,21 @@ function makeDemoDb(){
     async addRoom(){return"dr_new";},
     async addUser(){return"du_new";},
     async addTask(){return"dtk_new";},
+    async getItemPresets(){return DEMO_ITEM_PRESETS;},
+    async getItems(propId,areaId){
+      let items=[...DEMO_ITEMS];
+      if(propId)items=items.filter(i=>i.prop_id===propId);
+      if(areaId)items=items.filter(i=>i.area_id===areaId);
+      return items.map(item=>({
+        ...item,
+        sub_items:DEMO_SUB_ITEMS.filter(s=>s.item_id===item.id),
+        item_tasks:[],
+      }));
+    },
+    async addItem(d){DEMO_ITEMS.push({id:"di_new_"+Date.now(),...d,status:"active",sub_items:[],item_tasks:[]});return"di_new";},
+    async updateItem(){},
+    async addSubItem(itemId,d){DEMO_SUB_ITEMS.push({id:"dsi_new_"+Date.now(),item_id:itemId,...d,status:"active"});return"dsi_new";},
+    async getItemEvents(itemId){return DEMO_EVENTS.filter(e=>e.item_id===itemId);},
   };
 }
 
@@ -1119,6 +1237,7 @@ function AdminArea({propId,areaId,setView}){
     e("div",{style:{display:"flex",gap:6,marginBottom:16}},tabBtns),
     tab==="events"&&e(Card,null,
       areaEvents.length?areaEvents.map(ev=>e(EventCard,{key:ev.id,event:ev,showActions:false})):e("div",{style:{fontSize:13,color:C.mid}},"No area-level events yet.")),
+    tab==="items"&&e(ItemsPanel,{propId,areaId,areaName:area&&area.name||"Area"}),
     tab==="tasks"&&e(Card,null,
       tasks.length?tasks.map(t=>e("div",{key:t.id,style:{display:"flex",alignItems:"center",gap:8,padding:"9px 0",borderBottom:"1px solid "+C.line,flexWrap:"wrap"}},
         e("span",{style:{fontSize:11,fontWeight:700,color:C.teal,minWidth:50}},t.ref),
@@ -1197,6 +1316,154 @@ function AdminEvents(){
 }
 
 // ── ADMIN MANAGE ───────────────────────────────────────────────────────────
+
+// ── ITEM COMPONENTS ────────────────────────────────────────────────────────
+function ItemCard({item,expanded,onToggle}){
+  const subs=item.sub_items||[];
+  const ragColor={active:C.green,decommissioned:C.mid,replaced:C.amber}[item.status]||C.mid;
+  return e("div",{style:{border:"1px solid "+C.line,borderRadius:10,marginBottom:10,overflow:"hidden"}},
+    e("div",{onClick:onToggle,style:{display:"flex",alignItems:"center",gap:10,padding:"12px 14px",cursor:"pointer",background:expanded?C.tealL:C.white}},
+      e("span",{style:{fontSize:20,flexShrink:0}},item.icon||"📦"),
+      e("div",{style:{flex:1,minWidth:0}},
+        e("div",{style:{fontWeight:700,fontSize:14,color:C.text}},item.name),
+        e("div",{style:{fontSize:11,color:C.mid,marginTop:2}},
+          [item.manufacturer,item.model,item.year_of_mfr?"("+item.year_of_mfr+")":null].filter(Boolean).join(" · ")||item.category)),
+      e("div",{style:{display:"flex",alignItems:"center",gap:8,flexShrink:0}},
+        item.serial_number&&e("span",{style:{fontSize:10,color:C.mid,background:"#F1F5F9",padding:"2px 6px",borderRadius:4,fontFamily:"monospace"}},item.serial_number),
+        subs.length>0&&e("span",{style:{fontSize:11,color:C.teal,fontWeight:700}},subs.length+" sub"),
+        e("span",{style:{fontSize:14,color:C.mid}},expanded?"▾":"▸"))),
+    expanded&&e("div",{style:{padding:"0 14px 14px"}},
+      item.notes&&e("div",{style:{fontSize:12,color:C.mid,marginBottom:10,padding:"6px 10px",background:"#F7F9FB",borderRadius:6}},item.notes),
+      e("div",{style:{display:"flex",gap:16,fontSize:12,marginBottom:10,flexWrap:"wrap"}},
+        item.manufacturer&&e("div",null,e("span",{style:{color:C.mid}},"Manufacturer: "),e("b",null,item.manufacturer)),
+        item.model&&e("div",null,e("span",{style:{color:C.mid}},"Model: "),e("b",null,item.model)),
+        item.year_of_mfr&&e("div",null,e("span",{style:{color:C.mid}},"YOM: "),e("b",null,item.year_of_mfr)),
+        item.serial_number&&e("div",null,e("span",{style:{color:C.mid}},"S/N: "),e("b",{style:{fontFamily:"monospace"}},item.serial_number)),
+        item.install_date&&e("div",null,e("span",{style:{color:C.mid}},"Installed: "),e("b",null,item.install_date))),
+      subs.length>0&&e("div",null,
+        e("div",{style:{fontSize:11,fontWeight:700,color:C.mid,textTransform:"uppercase",letterSpacing:0.5,marginBottom:6}},"Sub-components"),
+        subs.map(s=>e("div",{key:s.id,style:{display:"flex",gap:10,alignItems:"center",padding:"5px 10px",background:C.bg,borderRadius:6,marginBottom:4}},
+          e("div",{style:{flex:1}},
+            e("span",{style:{fontSize:12,fontWeight:600,color:C.text}},s.name),
+            s.rating&&e("span",{style:{fontSize:11,color:C.mid,marginLeft:6}},s.rating),
+            s.notes&&e("div",{style:{fontSize:11,color:C.mid,marginTop:2}},s.notes)),
+          s.serial_number&&e("span",{style:{fontSize:10,color:C.mid,fontFamily:"monospace",background:"#F1F5F9",padding:"1px 5px",borderRadius:3}},s.serial_number),
+          e("span",{style:{fontSize:10,padding:"2px 8px",borderRadius:10,background:s.status==="active"?C.greenL:C.amberL,color:s.status==="active"?C.green:C.amber,fontWeight:600}},s.status))))));
+}
+
+function ItemsPanel({propId,areaId,areaName}){
+  const[items,setItems]=useState([]);
+  const[presets,setPresets]=useState([]);
+  const[loading,setLoading]=useState(true);
+  const[expanded,setExpanded]=useState({});
+  const[showAdd,setShowAdd]=useState(false);
+  const[selPreset,setSelPreset]=useState("");
+  const[iName,setIName]=useState("");
+  const[iMfr,setIMfr]=useState("");
+  const[iModel,setIModel]=useState("");
+  const[iSerial,setISerial]=useState("");
+  const[iYOM,setIYOM]=useState("");
+  const[iNotes,setINotes]=useState("");
+  const[saving,setSaving]=useState(false);
+  const[notify,setNotify]=useState("");
+
+  useEffect(()=>{
+    Promise.all([db.getItems(propId,areaId),db.getItemPresets()]).then(([it,pr])=>{
+      setItems(it);setPresets(pr);setLoading(false);});
+  },[propId,areaId]);
+
+  const save=async()=>{
+    if(!iName){setNotify("Item name required.");return;}
+    setSaving(true);
+    const preset=presets.find(p=>p.id===selPreset);
+    await db.addItem({prop_id:propId,area_id:areaId,preset_id:selPreset||null,
+      name:iName,category:preset?preset.category:"General",icon:preset?preset.icon:"📦",
+      manufacturer:iMfr||null,model:iModel||null,serial_number:iSerial||null,
+      year_of_mfr:iYOM?parseInt(iYOM):null,notes:iNotes||null});
+    const updated=await db.getItems(propId,areaId);
+    setItems(updated);setSaving(false);setShowAdd(false);
+    setIName("");setIMfr("");setIModel("");setISerial("");setIYOM("");setINotes("");setSelPreset("");
+    setNotify("Item added ✓");setTimeout(()=>setNotify(""),3000);
+  };
+
+  // Group by category
+  const cats={};
+  items.forEach(it=>{if(!cats[it.category])cats[it.category]=[];cats[it.category].push(it);});
+
+  if(loading)return e(Spin,null);
+
+  return e("div",null,
+    e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}},
+      e("div",{style:{fontWeight:700,fontSize:14,color:C.nav}},areaName+" — Registered Items ("+items.length+")"),
+      e(Btn,{small:true,onClick:()=>setShowAdd(v=>!v)},showAdd?"Cancel":"+ Add item")),
+
+    notify&&e("div",{style:{padding:"8px 12px",borderRadius:6,background:C.greenL,color:C.green,fontSize:12,fontWeight:600,marginBottom:10}},notify),
+
+    showAdd&&e(Card,{style:{marginBottom:14,background:C.tealL,border:"1.5px solid "+C.teal}},
+      e("div",{style:{fontWeight:700,fontSize:13,color:C.teal,marginBottom:12}},"Add new item to "+areaName),
+      e(Sel,{label:"Item type (from catalogue)",value:selPreset,onChange:v=>{
+        setSelPreset(v);const p=presets.find(x=>x.id===v);if(p&&!iName)setIName(p.name);}
+        ,options:[{v:"",l:"Custom / not in catalogue"},...presets.map(p=>({v:p.id,l:p.icon+" "+p.name+" — "+p.category}))]}),
+      e(Inp,{label:"Item name / location",value:iName,onChange:setIName,placeholder:"e.g. Socket Outlet — Room 101 North Wall"}),
+      e(Grid,{cols:2,gap:8},
+        e(Inp,{label:"Manufacturer",value:iMfr,onChange:setIMfr,placeholder:"e.g. Schneider"}),
+        e(Inp,{label:"Model number",value:iModel,onChange:setIModel,placeholder:"e.g. Pragma D"})),
+      e(Grid,{cols:2,gap:8},
+        e(Inp,{label:"Serial number",value:iSerial,onChange:setISerial,placeholder:"e.g. SCH-2021-0441"}),
+        e(Inp,{label:"Year of manufacture",value:iYOM,onChange:setIYOM,placeholder:"e.g. 2021",type:"number"})),
+      e(Inp,{label:"Notes",value:iNotes,onChange:setINotes,placeholder:"Any additional notes…"}),
+      e(Btn,{onClick:save,disabled:saving,full:true},saving?"Saving…":"Save item")),
+
+    items.length===0&&!showAdd&&e("div",{style:{textAlign:"center",padding:24,color:C.mid,fontSize:13}},"No items registered for this area yet. Tap '+ Add item' to register equipment."),
+
+    Object.entries(cats).map(([cat,catItems])=>e("div",{key:cat,style:{marginBottom:16}},
+      e("div",{style:{fontSize:11,fontWeight:700,color:C.mid,textTransform:"uppercase",letterSpacing:0.5,marginBottom:6}},cat),
+      catItems.map(item=>e(ItemCard,{key:item.id,item,expanded:!!expanded[item.id],
+        onToggle:()=>setExpanded(p=>Object.assign({},p,{[item.id]:!p[item.id]}))})))));
+}
+
+// ── ADMIN ITEMS MANAGEMENT ─────────────────────────────────────────────────
+function AdminItems(){
+  const[presets,setPresets]=useState([]);
+  const[loading,setLoading]=useState(true);
+  const[expanded,setExpanded]=useState({});
+
+  useEffect(()=>{db.getItemPresets().then(p=>{setPresets(p);setLoading(false);});});
+
+  const cats={};
+  presets.forEach(p=>{if(!cats[p.category])cats[p.category]=[];cats[p.category].push(p);});
+
+  if(loading)return e(Spin,null);
+
+  return e("div",null,
+    e(SectionHead,{title:"Item Catalogue",sub:presets.length+" preset item types — assign to any area when setting up a property"}),
+    e("div",{style:{padding:"10px 14px",background:C.tealL,borderRadius:8,marginBottom:16,fontSize:13,color:C.teal}},
+      "Item presets define what equipment types exist and what maintenance tasks each requires. When you assign a preset item to a property area, its scheduled tasks are created automatically."),
+    Object.entries(cats).map(([cat,catPresets])=>e("div",{key:cat,style:{marginBottom:20}},
+      e("div",{style:{fontWeight:800,fontSize:13,color:C.white,background:C.nav,padding:"6px 14px",borderRadius:"8px 8px 0 0"}},cat+" ("+catPresets.length+")"),
+      catPresets.map(p=>e("div",{key:p.id,
+        style:{border:"1px solid "+C.line,borderTop:"none",background:expanded[p.id]?C.bg:C.white}},
+        e("div",{onClick:()=>setExpanded(prev=>Object.assign({},prev,{[p.id]:!prev[p.id]})),
+          style:{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",cursor:"pointer"}},
+          e("span",{style:{fontSize:18}},p.icon),
+          e("div",{style:{flex:1}},
+            e("div",{style:{fontWeight:700,fontSize:13}},p.name),
+            e("div",{style:{fontSize:11,color:C.mid}},p.description||"")),
+          e("span",{style:{fontSize:12,color:C.mid}},expanded[p.id]?"▾":"▸")),
+        expanded[p.id]&&e("div",{style:{padding:"0 14px 12px"}},
+          e("div",{style:{fontSize:11,fontWeight:700,color:C.mid,textTransform:"uppercase",letterSpacing:0.5,marginBottom:8}},"Preset maintenance tasks"),
+          (p.item_preset_tasks||[]).length===0
+            ?e("div",{style:{fontSize:12,color:C.mid}},"No preset tasks defined.")
+            :(p.item_preset_tasks||[]).map(t=>e("div",{key:t.id,
+              style:{display:"flex",gap:10,padding:"6px 10px",background:C.white,borderRadius:6,marginBottom:4,border:"1px solid "+C.line}},
+              e("div",{style:{flex:1}},
+                e("div",{style:{display:"flex",gap:8,alignItems:"center",marginBottom:2}},
+                  e("span",{style:{fontSize:10,fontWeight:700,color:C.teal,background:C.tealL,padding:"1px 6px",borderRadius:4}},t.ref),
+                  e("span",{style:{fontSize:12,fontWeight:600}},t.name),
+                  t.pass_fail&&e("span",{style:{fontSize:10,color:C.green,background:C.greenL,padding:"1px 6px",borderRadius:4,fontWeight:700}},"Pass/Fail")),
+                e("div",{style:{fontSize:11,color:C.mid}},t.frequency+(t.est_minutes?" · "+t.est_minutes+"min":"")+(t.bom?" · 🔧 "+t.bom:"")))))))))));
+}
+
 function AdminManage(){
   const[tab,setTab]=useState("rooms");const[props,setProps]=useState([]);const[users,setUsers]=useState([]);const[areas,setAreas]=useState([]);const[msg,setMsg]=useState("");const[loading,setLoading]=useState(true);
   const[pName,setPName]=useState("");const[pAddr,setPAddr]=useState("");const[pType,setPType]=useState("Boutique Hotel");
@@ -1225,7 +1492,8 @@ function AdminManage(){
     tab==="areas"&&e(Card,null,e("div",{style:{fontWeight:700,fontSize:14,marginBottom:14}},"Add new area"),e(Sel,{label:"Property",value:aProp,onChange:setAProp,options:props.map(p=>({v:p.id,l:p.name}))}),e(Inp,{label:"Area name",value:aName,onChange:setAName,placeholder:"e.g. Pool Terrace"}),e(Inp,{label:"Icon (emoji)",value:aIcon,onChange:setAIcon,placeholder:"e.g. 🏊"}),e("label",{style:{display:"flex",alignItems:"center",gap:10,cursor:"pointer",marginBottom:16,fontSize:13}},e("input",{type:"checkbox",checked:aRooms,onChange:ev=>setARooms(ev.target.checked),style:{width:16,height:16}}),"Contains individual rooms"),e(Btn,{onClick:addArea},"Add area")),
     tab==="rooms"&&e(Card,null,e("div",{style:{fontWeight:700,fontSize:14,marginBottom:14}},"Add new room"),e(Sel,{label:"Property",value:rProp,onChange:setRProp,options:props.map(p=>({v:p.id,l:p.name}))}),e(Sel,{label:"Area",value:rArea,onChange:setRArea,options:[{v:"",l:"Select area…"},...areas.map(a=>({v:a.id,l:a.name}))]}),e(Inp,{label:"Room name",value:rName,onChange:setRName,placeholder:"e.g. Room 207"}),e(Inp,{label:"Room type",value:rSub,onChange:setRSub,placeholder:"e.g. Deluxe Double"}),e(Btn,{onClick:addRoom},"Add room")),
     tab==="tasks"&&e(Card,null,e("div",{style:{fontWeight:700,fontSize:14,marginBottom:14}},"Add new task"),e(Grid,{cols:2,gap:8},e(Sel,{label:"Property",value:tProp,onChange:setTProp,options:props.map(p=>({v:p.id,l:p.name}))}),e(Sel,{label:"Area",value:tArea,onChange:setTArea,options:[{v:"",l:"Select area…"},...areas.map(a=>({v:a.id,l:a.name}))]})),e(Grid,{cols:2,gap:8},e(Inp,{label:"Reference",value:tRef,onChange:setTRef,placeholder:"e.g. W-05"}),e(Sel,{label:"Type",value:tType,onChange:setTType,options:typeOpts})),e(Inp,{label:"Task name",value:tName,onChange:setTName,placeholder:"e.g. Biocide dosing check"}),e(Inp,{label:"Description",value:tDesc,onChange:setTDesc,placeholder:"Instructions for tech…",rows:2}),e(Inp,{label:"Bill of materials",value:tBom,onChange:setTBom,placeholder:"e.g. Thermometer, biocide spray",rows:2}),e(Grid,{cols:2,gap:8},e(Sel,{label:"Frequency",value:tFreq,onChange:setTFreq,options:freqOpts}),e(Sel,{label:"Grade",value:tGrade,onChange:setTGrade,options:[{v:"General",l:"General hand"},{v:"Licensed",l:"Licensed engineer"}]})),e(Grid,{cols:2,gap:8},e(Inp,{label:"Est. time (min)",value:tMins,onChange:setTMins,placeholder:"30",type:"number"}),e(Inp,{label:"Charge rate (€)",value:tRate,onChange:setTRate,placeholder:"0",type:"number"})),e("label",{style:{display:"flex",alignItems:"center",gap:10,cursor:"pointer",marginBottom:16,fontSize:13}},e("input",{type:"checkbox",checked:tPhoto,onChange:ev=>setTPhoto(ev.target.checked),style:{width:16,height:16}}),"Photo required"),e(Btn,{onClick:addTask},"Add task")),
-    tab==="users"&&e(Card,null,e("div",{style:{fontWeight:700,fontSize:14,marginBottom:14}},"Add new user"),e(Inp,{label:"Full name",value:uName,onChange:setUName,placeholder:"e.g. John Borg"}),e(Sel,{label:"Role",value:uRole,onChange:setURole,options:[{v:"tech",l:"Tech / Engineer"},{v:"owner",l:"Property owner"},{v:"admin",l:"Admin"}]}),e(Inp,{label:"Email",value:uEmail,onChange:setUEmail,placeholder:"email@example.com",type:"email"}),e(Inp,{label:"Password",value:uPass,onChange:setUPass,placeholder:"Choose a password",type:"password"}),e(Inp,{label:"Property IDs (owners only, comma separated)",value:uProps,onChange:setUProps,placeholder:"e.g. p1,p2"}),e(Btn,{onClick:addUser},"Add user"),e("div",{style:{marginTop:20,fontWeight:700,fontSize:13,marginBottom:10}},"All users"),users.map(u=>e("div",{key:u.id,style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:"1px solid "+C.line}},e("div",null,e("div",{style:{fontSize:13,fontWeight:600}},u.name),e("div",{style:{fontSize:11,color:C.mid}},u.email)),e("span",{style:{padding:"2px 10px",borderRadius:20,background:{admin:C.tealL,tech:"#EEF2FF",owner:C.amberL}[u.role]||C.bg,color:{admin:C.teal,tech:"#6366F1",owner:C.amber}[u.role]||C.mid,fontSize:11,fontWeight:600}},u.role)))));
+    tab==="users"&&e(Card,null,e("div",{style:{fontWeight:700,fontSize:14,marginBottom:14}},"Add new user"),e(Inp,{label:"Full name",value:uName,onChange:setUName,placeholder:"e.g. John Borg"}),e(Sel,{label:"Role",value:uRole,onChange:setURole,options:[{v:"tech",l:"Tech / Engineer"},{v:"owner",l:"Property owner"},{v:"admin",l:"Admin"}]}),e(Inp,{label:"Email",value:uEmail,onChange:setUEmail,placeholder:"email@example.com",type:"email"}),e(Inp,{label:"Password",value:uPass,onChange:setUPass,placeholder:"Choose a password",type:"password"}),e(Inp,{label:"Property IDs (owners only, comma separated)",value:uProps,onChange:setUProps,placeholder:"e.g. p1,p2"}),e(Btn,{onClick:addUser},"Add user"),e("div",{style:{marginTop:20,fontWeight:700,fontSize:13,marginBottom:10}},"All users"),users.map(u=>e("div",{key:u.id,style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:"1px solid "+C.line}},e("div",null,e("div",{style:{fontSize:13,fontWeight:600}},u.name),e("div",{style:{fontSize:11,color:C.mid}},u.email)),e("span",{style:{padding:"2px 10px",borderRadius:20,background:{admin:C.tealL,tech:"#EEF2FF",owner:C.amberL}[u.role]||C.bg,color:{admin:C.teal,tech:"#6366F1",owner:C.amber}[u.role]||C.mid,fontSize:11,fontWeight:600}},u.role)))),
+    tab==="items"&&e(AdminItems,null));
 }
 
 // ── TECH DASH ──────────────────────────────────────────────────────────────
