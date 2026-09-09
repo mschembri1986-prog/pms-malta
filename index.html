@@ -558,27 +558,185 @@ function EventCard({event:ev,showActions,onAction}){
 }
 
 // ── LOGIN ──────────────────────────────────────────────────────────────────
+// ── DEMO DATA (offline, no Supabase) ──────────────────────────────────────
+const DEMO_USERS={
+  "demo.admin":  {id:"du1",name:"Demo Admin",role:"admin",email:"demo.admin",prop_ids:[]},
+  "demo.hotel":  {id:"du2",name:"Mike Xuereb (Demo)",role:"owner",email:"demo.hotel",prop_ids:["dp1"]},
+  "demo.apts":   {id:"du3",name:"Anna Borg (Demo)",role:"owner",email:"demo.apts",prop_ids:["dp2","dp3","dp4","dp5","dp6"]},
+  "demo.tech":   {id:"du4",name:"Maurice Rizzo (Demo)",role:"tech",email:"demo.tech",prop_ids:[]},
+};
+const DEMO_PROPS=[
+  {id:"dp1",name:"Grand Harbour Hotel",address:"1 Triq il-Belt, Valletta",type:"Boutique Hotel",room_count:22,rag:"amber"},
+  {id:"dp2",name:"Apt 12A — Tigne Point",address:"12A Tigne Point, Sliema",type:"Apartment",room_count:3,rag:"green"},
+  {id:"dp3",name:"Apt 4 — St Julian's",address:"4 Triq San Ġiljan",type:"Apartment",room_count:2,rag:"red"},
+  {id:"dp4",name:"Apt 7B — Balluta Bay",address:"7B Balluta Bay, St Julian's",type:"Apartment",room_count:3,rag:"amber"},
+  {id:"dp5",name:"Apt 2 — Marsaskala",address:"2 Triq il-Baħar, Marsaskala",type:"Apartment",room_count:2,rag:"green"},
+  {id:"dp6",name:"Apt 9 — Mdina Road",address:"9 Mdina Road, Attard",type:"Apartment",room_count:2,rag:"green"},
+];
+const DEMO_EVENTS=[
+  // Hotel — red/urgent
+  {id:"dev1",prop_id:"dp1",area_id:"da1",room_id:"dr1",rag:"red",task_name:"Hot water temp check",note:"Temperature 43°C — below 50°C minimum (L.N. 5/2006). Legionella risk. Immediate action required.",completed_at:"2026-09-02T09:15:00Z",quote_status:"requested",month_label:"Sep '26",tasks:{name:"Hot water temp check",type:"hydro",ref:"W-01",description:"Check hot water at point of use. Must be ≥50°C."},areas:{name:"Guest Rooms",icon:"🛏"},rooms:{name:"Room 205"}},
+  {id:"dev2",prop_id:"dp1",area_id:"da2",room_id:null,rag:"red",task_name:"Electrical DB inspection",note:"Burnt terminal on MCB-7 (kitchen circuit). Smell of burning. Circuit isolated. Needs electrician urgently.",completed_at:"2026-09-02T11:00:00Z",quote_status:"requested",month_label:"Sep '26",tasks:{name:"Electrical DB inspection & IR scan",type:"elec",ref:"E-DB",description:"IR thermal scan and visual inspection of distribution board."},areas:{name:"Roof & Plant",icon:"⚡"},rooms:null},
+  {id:"dev3",prop_id:"dp1",area_id:"da3",room_id:null,rag:"red",task_name:"Pool chlorine check",note:"Free chlorine 0.54 mg/L — dangerously below 1.0 mg/L minimum. Pool closed. Shock treatment applied.",completed_at:"2026-09-01T08:30:00Z",quote_status:"none",month_label:"Sep '26",tasks:{name:"Pool water chemistry",type:"pool",ref:"P-01",description:"Free chlorine ≥1.0 mg/L, pH 7.2–7.6, TDS <2000."},areas:{name:"Pool Terrace",icon:"🏊"},rooms:null},
+  // Hotel — amber
+  {id:"dev4",prop_id:"dp1",area_id:"da1",room_id:"dr2",rag:"amber",task_name:"Mould inspection",note:"Active mould patch 15×20cm above shower tray. Biocide applied. Sealant replacement needed.",completed_at:"2026-09-02T10:00:00Z",quote_status:"none",month_label:"Sep '26",tasks:{name:"Mould inspection & biocide treatment",type:"hydro",ref:"B-01",description:"Inspect all surfaces for mould. Apply biocide and record."},areas:{name:"Guest Rooms",icon:"🛏"},rooms:{name:"Room 308"}},
+  {id:"dev5",prop_id:"dp1",area_id:"da4",room_id:null,rag:"amber",task_name:"Ventilation check",note:"Extraction fan in breakfast area making grinding noise. Airflow reduced. Fan motor likely failing.",completed_at:"2026-09-02T12:30:00Z",quote_status:"requested",month_label:"Sep '26",tasks:{name:"Ventilation & extraction check",type:"hvac",ref:"K-04",description:"Check kitchen and breakfast area extraction fans."},areas:{name:"Breakfast Area",icon:"☕"},rooms:null},
+  {id:"dev6",prop_id:"dp1",area_id:"da2",room_id:null,rag:"amber",task_name:"Generator test",note:"Generator started OK but low coolant warning light active. Topped up. Recommend service before peak season.",completed_at:"2026-09-01T14:00:00Z",quote_status:"none",month_label:"Sep '26",tasks:{name:"Generator load test & logbook",type:"misc",ref:"GEN",description:"10-minute load test under full load. Check coolant, oil, fuel."},areas:{name:"Roof & Plant",icon:"⚡"},rooms:null},
+  // Hotel — green
+  {id:"dev7",prop_id:"dp1",area_id:"da1",room_id:"dr3",rag:"green",task_name:"AC filter clean",note:"AC filter cleaned. Coil inspected — good. No issues.",completed_at:"2026-09-02T09:45:00Z",quote_status:"none",month_label:"Sep '26",tasks:{name:"AC filter clean & biocide",type:"hvac",ref:"AC-1",description:"Clean filter, biocide spray, check drain tray."},areas:{name:"Guest Rooms",icon:"🛏"},rooms:{name:"Room 101"}},
+  {id:"dev8",prop_id:"dp1",area_id:"da3",room_id:null,rag:"green",task_name:"Pool visual inspection",note:"Pool surrounds clean. Skimmer baskets emptied. Pump running normally.",completed_at:"2026-09-01T08:45:00Z",quote_status:"none",month_label:"Sep '26",tasks:{name:"Pool visual inspection",type:"pool",ref:"P-02",description:"Inspect waterline, skimmer, pump room and surrounds."},areas:{name:"Pool Terrace",icon:"🏊"},rooms:null},
+  // Apt 4 — red
+  {id:"dev9",prop_id:"dp3",area_id:"da5",room_id:null,rag:"red",task_name:"Water ingress",note:"Active water ingress through ceiling of bathroom. Water staining and plaster damage. Source unknown — may be roof or flat above.",completed_at:"2026-09-03T10:00:00Z",quote_status:"requested",month_label:"Sep '26",tasks:{name:"Building fabric inspection",type:"misc",ref:"B-03",description:"Inspect ceilings, walls and floors for damage or movement."},areas:{name:"Bathroom",icon:"🚿"},rooms:null},
+  // Apt 7B — amber
+  {id:"dev10",prop_id:"dp4",area_id:"da6",room_id:null,rag:"amber",task_name:"AC drain blockage",note:"AC drain tray overflowing into kitchen unit below. Cleared blockage. Recommend quarterly drain cleaning.",completed_at:"2026-09-04T11:30:00Z",quote_status:"none",month_label:"Sep '26",tasks:{name:"AC drain tray check",type:"hvac",ref:"AC-2",description:"Check drain tray, clear blockages, inspect coil condition."},areas:{name:"Living Area",icon:"🛋"},rooms:null},
+  // Apt 2 & 9 — green (all good)
+  {id:"dev11",prop_id:"dp2",area_id:"da7",room_id:null,rag:"green",task_name:"Full quarterly check",note:"All rooms inspected. Water temps good. No mould. Sealants in good condition. Electrics OK.",completed_at:"2026-09-05T09:00:00Z",quote_status:"none",month_label:"Sep '26",tasks:{name:"Quarterly room inspection",type:"misc",ref:"PPM",description:"Full room inspection — water, mould, fabric, electrical, HVAC."},areas:{name:"All Areas",icon:"🏠"},rooms:null},
+  {id:"dev12",prop_id:"dp5",area_id:"da8",room_id:null,rag:"green",task_name:"Full quarterly check",note:"All areas inspected and satisfactory. No issues to report.",completed_at:"2026-09-06T10:00:00Z",quote_status:"none",month_label:"Sep '26",tasks:{name:"Quarterly room inspection",type:"misc",ref:"PPM",description:"Full room inspection — water, mould, fabric, electrical, HVAC."},areas:{name:"All Areas",icon:"🏠"},rooms:null},
+];
+const DEMO_SCHEDULE={
+  "dp1":{
+    "Sep '26":"approved","Oct '26":"proposed","Nov '26":"proposed",
+    "Dec '26":"proposed","Jan '27":"proposed","Feb '27":"proposed",
+    "Mar '27":"proposed","Apr '27":"proposed","May '27":"proposed",
+    "Jun '27":"proposed","Jul '27":"proposed","Aug '27":"proposed",
+  }
+};
+
+// Demo-mode db override
+function makeDemoDb(){
+  return{
+    async login(email){
+      const u=DEMO_USERS[email];
+      return{data:u||null,error:u?null:{message:"Not found"}};
+    },
+    async getProperties(ids){
+      if(!ids||!ids.length)return DEMO_PROPS;
+      return DEMO_PROPS.filter(p=>ids.includes(p.id));
+    },
+    async getEvents(f){
+      f=f||{};
+      let ev=DEMO_EVENTS;
+      if(f.propId)ev=ev.filter(e=>e.prop_id===f.propId);
+      if(f.propIds&&f.propIds.length)ev=ev.filter(e=>f.propIds.includes(e.prop_id));
+      if(f.areaId)ev=ev.filter(e=>e.area_id===f.areaId);
+      if(f.roomId)ev=ev.filter(e=>e.room_id===f.roomId);
+      return ev;
+    },
+    async getAreas(propId){
+      const areas={
+        dp1:[{id:"da1",prop_id:"dp1",name:"Guest Rooms",icon:"🛏",has_rooms:true,sort_order:1,rag:"amber"},
+              {id:"da2",prop_id:"dp1",name:"Roof & Plant",icon:"⚡",has_rooms:false,sort_order:2,rag:"amber"},
+              {id:"da3",prop_id:"dp1",name:"Pool Terrace",icon:"🏊",has_rooms:false,sort_order:3,rag:"red"},
+              {id:"da4",prop_id:"dp1",name:"Breakfast Area",icon:"☕",has_rooms:false,sort_order:4,rag:"amber"}],
+        dp3:[{id:"da5",prop_id:"dp3",name:"Bathroom",icon:"🚿",has_rooms:false,sort_order:1,rag:"red"}],
+        dp4:[{id:"da6",prop_id:"dp4",name:"Living Area",icon:"🛋",has_rooms:false,sort_order:1,rag:"amber"}],
+      };
+      return areas[propId]||[{id:"da_gen",prop_id:propId,name:"All Areas",icon:"🏠",has_rooms:false,sort_order:1,rag:"green"}];
+    },
+    async getRooms(){return[];},
+    async getTasksForArea(){return[];},
+    async getScheduleMonths(propId){return DEMO_SCHEDULE[propId]||{};},
+    async getScheduleForMonth(){return[];},
+    async getTechSchedule(){return[];},
+    async getScheduleFallback(){return[];},
+    async getUsers(){return Object.values(DEMO_USERS);},
+    async updateEvent(id,u){
+      const ev=DEMO_EVENTS.find(e=>e.id===id);
+      if(ev)Object.assign(ev,u);
+    },
+    async approveMonth(){},
+    async createEvent(){},
+    async completeEntry(){},
+    async uploadPhoto(){return null;},
+    async addProperty(){return"dp_new";},
+    async addArea(){return"da_new";},
+    async addRoom(){return"dr_new";},
+    async addUser(){return"du_new";},
+    async addTask(){return"dtk_new";},
+  };
+}
+
 function Login({onLogin}){
+  const[tab,setTab]=useState("login"); // "login" | "demo"
   const[email,setEmail]=useState("");
   const[pass,setPass]=useState("");
   const[err,setErr]=useState("");
   const[loading,setLoading]=useState(false);
+
   const attempt=async()=>{
     if(!email||!pass){setErr("Enter email and password.");return;}
     setErr("");setLoading(true);
     const{data}=await db.login(email,pass);
     if(data)onLogin(data);else{setErr("Incorrect email or password.");setLoading(false);}
   };
-  return e("div",{style:{minHeight:"100vh",background:C.nav,display:"flex",alignItems:"center",justifyContent:"center",padding:20}},
-    e("div",{style:{background:C.white,borderRadius:16,padding:36,width:"100%",maxWidth:380}},
-      e("div",{style:{textAlign:"center",marginBottom:28}},
-        e("div",{style:{fontSize:26,fontWeight:800,color:C.teal,letterSpacing:-1}},"PMS Malta"),
-        e("div",{style:{fontSize:12,color:C.mid,marginTop:4}},"Preventive Maintenance Services")),
-      e(Inp,{label:"Email",value:email,onChange:setEmail,placeholder:"you@example.com",type:"email"}),
-      e(Inp,{label:"Password",value:pass,onChange:setPass,placeholder:"••••••••",type:"password"}),
-      err&&e("div",{style:{marginBottom:12,padding:"8px 12px",background:C.redL,color:C.red,borderRadius:6,fontSize:13}},err),
-      e(Btn,{onClick:attempt,full:true,disabled:loading},loading?"Signing in…":"Sign in"),
-      e("div",{style:{marginTop:20,fontSize:11,color:C.mid,textAlign:"center"}},"Contact your administrator if you need access.")));
+
+  const demoLogin=async(key)=>{
+    const ddb=makeDemoDb();
+    const{data}=await ddb.login(key);
+    if(data)onLogin({...data,_demoDb:ddb});
+  };
+
+  const DEMO_ROLES=[
+    {key:"demo.admin",label:"Admin portal",icon:"🔧",desc:"Full access — all properties, schedule, events, manage"},
+    {key:"demo.hotel",label:"Hotel owner",icon:"🏨",desc:"Grand Harbour Hotel — 22 rooms, urgent events, schedule"},
+    {key:"demo.apts",label:"Apartment owner",icon:"🏠",desc:"5 apartments — mix of green / amber / urgent"},
+    {key:"demo.tech",label:"Technician",icon:"👷",desc:"Tech portal — visit schedule & task completion"},
+  ];
+
+  return e("div",{style:{minHeight:"100vh",background:C.nav,display:"flex",alignItems:"center",justifyContent:"center",padding:16}},
+    e("div",{style:{width:"100%",maxWidth:400}},
+
+      // Logo
+      e("div",{style:{textAlign:"center",marginBottom:24}},
+        e("div",{style:{fontSize:28,fontWeight:800,color:C.white,letterSpacing:-1}},"PMS Malta"),
+        e("div",{style:{fontSize:12,color:"rgba(255,255,255,0.5)",marginTop:4}},"Preventive Maintenance Services")),
+
+      // Tab switcher
+      e("div",{style:{display:"flex",background:"rgba(255,255,255,0.08)",borderRadius:10,padding:4,marginBottom:20}},
+        ["login","demo"].map(t=>e("button",{key:t,onClick:()=>{setTab(t);setErr("");},
+          style:{flex:1,padding:"8px 0",borderRadius:7,border:"none",cursor:"pointer",fontSize:13,fontWeight:600,
+            background:tab===t?C.white:"transparent",color:tab===t?C.nav:"rgba(255,255,255,0.6)"}},
+          t==="login"?"Sign in":"Try a demo"))),
+
+      // Card
+      e("div",{style:{background:C.white,borderRadius:14,padding:28}},
+
+        tab==="login"&&e("div",null,
+          e(Inp,{label:"Email",value:email,onChange:setEmail,placeholder:"you@example.com",type:"email"}),
+          e(Inp,{label:"Password",value:pass,onChange:setPass,placeholder:"••••••••",type:"password"}),
+          err&&e("div",{style:{marginBottom:12,padding:"8px 12px",background:C.redL,color:C.red,borderRadius:6,fontSize:13}},err),
+          e(Btn,{onClick:attempt,full:true,disabled:loading},loading?"Signing in…":"Sign in"),
+          e("div",{style:{marginTop:16,fontSize:11,color:C.mid,textAlign:"center"}},"Contact your administrator if you need access.")),
+
+        tab==="demo"&&e("div",null,
+          e("div",{style:{fontSize:12,color:C.mid,marginBottom:16,textAlign:"center"}},"Choose a portal to explore — no login required"),
+          DEMO_ROLES.map(r=>e("button",{key:r.key,onClick:()=>demoLogin(r.key),
+            style:{display:"flex",alignItems:"center",gap:12,width:"100%",padding:"12px 14px",borderRadius:9,
+              border:"1.5px solid "+C.line,background:C.bg,cursor:"pointer",marginBottom:10,textAlign:"left"}},
+            e("span",{style:{fontSize:22}},r.icon),
+            e("div",null,
+              e("div",{style:{fontSize:13,fontWeight:700,color:C.text}},r.label),
+              e("div",{style:{fontSize:11,color:C.mid,marginTop:2}},r.desc)))))),
+
+      // Contact footer
+      e("div",{style:{marginTop:20,borderRadius:12,background:"rgba(255,255,255,0.07)",padding:16}},
+        e("div",{style:{fontSize:11,color:"rgba(255,255,255,0.4)",marginBottom:10,textTransform:"uppercase",letterSpacing:1,fontWeight:700}},"Get in touch"),
+        e("div",{style:{display:"flex",alignItems:"center",gap:10,marginBottom:6}},
+          e("span",{style:{fontSize:16}},"👤"),
+          e("div",null,
+            e("div",{style:{fontSize:13,fontWeight:700,color:C.white}},"Matthew Schembri"),
+            e("div",{style:{fontSize:11,color:"rgba(255,255,255,0.5)"}},"Preventive Maintenance Services Malta"))),
+        e("div",{style:{display:"flex",alignItems:"center",gap:10,marginBottom:6}},
+          e("span",{style:{fontSize:14}},"✉"),
+          e("a",{href:"mailto:matthew.schembri@cantab.net",style:{fontSize:12,color:"rgba(255,255,255,0.6)",textDecoration:"none"}},"matthew.schembri@cantab.net")),
+        e("div",{style:{display:"flex",alignItems:"center",gap:10,marginBottom:14}},
+          e("span",{style:{fontSize:14}},"📞"),
+          e("a",{href:"tel:+35679680343",style:{fontSize:12,color:"rgba(255,255,255,0.6)",textDecoration:"none"}},"+356 7968 0343")),
+        e("a",{href:"https://wa.me/35679680343?text=Hi%20Matthew%2C%20I%27d%20like%20to%20know%20more%20about%20PMS%20Malta",
+          target:"_blank",rel:"noopener noreferrer",
+          style:{display:"flex",alignItems:"center",justifyContent:"center",gap:8,width:"100%",padding:"10px 0",
+            borderRadius:8,background:"#25D366",color:C.white,fontWeight:700,fontSize:13,textDecoration:"none"}},
+          e("span",{style:{fontSize:18}},"💬"),"Chat on WhatsApp"))));
 }
 
 // ── ADMIN DASHBOARD ────────────────────────────────────────────────────────
@@ -1247,7 +1405,10 @@ function App(){
   const[user,setUser]=useState(null);
   const[view,setView]=useState({page:"a_dash"});
   const[menu,setMenu]=useState(false);
-  const login=u=>{setUser(u);const d={admin:"a_dash",tech:"t_dash",owner:"o_dash"};setView({page:d[u.role]});};
+  const login=u=>{
+    if(u._demoDb){Object.assign(db,u._demoDb);delete u._demoDb;}
+    setUser(u);const d={admin:"a_dash",tech:"t_dash",owner:"o_dash"};setView({page:d[u.role]});
+  };
   const logout=()=>{setUser(null);setView({page:"a_dash"});};
   if(!user)return e(Login,{onLogin:login});
   const nav=NAVS[user.role]||[];const pc=PCOL[user.role];
